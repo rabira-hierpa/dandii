@@ -1,0 +1,25 @@
+version: "3.8"
+
+name: menged-ui
+services:
+  nextjs:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: menged-ui
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=postgresql://admin:adminpassword@postgis:5432/gtfs_dev_db
+      - NEXTAUTH_URL=http://localhost:3000
+      - NEXTAUTH_SECRET=your-nextauth-secret-key-change-in-production
+      - OTP_API_URL=http://otp-routing:8080/otp/routers/default/index/graphql
+    networks:
+      - menged-network
+      - default
+
+networks:
+  menged-network:
+    external: true
+    name: menged_default

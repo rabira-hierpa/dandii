@@ -1,64 +1,18 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { MapPin, CornerDownRight, Clock } from "lucide-react";
-import {
-  MapContainer,
-  TileLayer,
-  Marker,
-  Popup,
-  Polyline,
-  useMap,
-} from "react-leaflet";
-import L from "leaflet";
-import "leaflet/dist/leaflet.css";
+import dynamic from "next/dynamic";
 
-// Import Leaflet default marker icons which are not included in the CSS
-import iconRetinaUrl from "leaflet/dist/images/marker-icon-2x.png";
-import iconUrl from "leaflet/dist/images/marker-icon.png";
-import shadowUrl from "leaflet/dist/images/marker-shadow.png";
-
+// Type definitions
 type LatLng = {
   lat: number;
   lng: number;
 };
-
-// Helper component to fix Leaflet icon issues
-function LeafletMapSetup() {
-  useEffect(() => {
-    // Only run this in the browser
-    if (typeof window !== "undefined") {
-      // @ts-expect-error - Leaflet typings issue
-      delete L.Icon.Default.prototype._getIconUrl;
-
-      L.Icon.Default.mergeOptions({
-        iconRetinaUrl: iconRetinaUrl.src,
-        iconUrl: iconUrl.src,
-        shadowUrl: shadowUrl.src,
-      });
-    }
-  }, []);
-
-  return null;
-}
-
-// Helper component to fit map bounds around markers
-function FitBounds({ positions }: { positions: [number, number][] }) {
-  const map = useMap();
-
-  useEffect(() => {
-    if (positions.length > 0) {
-      const bounds = L.latLngBounds(positions.map((p) => [p[0], p[1]]));
-      map.fitBounds(bounds, { padding: [50, 50] });
-    }
-  }, [map, positions]);
-
-  return null;
-}
 
 type RouteInfoType = {
   duration: number;
@@ -76,6 +30,16 @@ type RouteInfoType = {
     transitLeg: boolean;
   }>;
 };
+
+// Dynamically import the map component with no SSR
+const LeafletMap = dynamic(() => import("./LeafletMap"), {
+  ssr: false,
+  loading: () => (
+    <div className="h-full w-full rounded-lg flex items-center justify-center bg-gray-100">
+      <p>Loading map...</p>
+    </div>
+  ),
+});
 
 export function RoutePlanner() {
   const [fromPoint, setFromPoint] = useState<LatLng>({
@@ -224,29 +188,11 @@ export function RoutePlanner() {
         </CardContent>
       </Card>
       <div className="h-full md:col-span-2 rounded-lg overflow-hidden">
-        <MapContainer
-          center={[fromPoint.lat, fromPoint.lng]}
-          zoom={13}
-          style={{ height: "100%", width: "100%" }}
-          className="z-0"
-        >
-          <LeafletMapSetup />
-          <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          />
-          <Marker position={[fromPoint.lat, fromPoint.lng]}>
-            <Popup>Starting Point</Popup>
-          </Marker>
-          <Marker position={[toPoint.lat, toPoint.lng]}>
-            <Popup>Destination</Popup>
-          </Marker>
-          <Polyline
-            positions={routePositions}
-            pathOptions={{ color: "blue", weight: 4 }}
-          />
-          <FitBounds positions={routePositions} />
-        </MapContainer>
+        <LeafletMap
+          fromPoint={fromPoint}
+          toPoint={toPoint}
+          routePositions={routePositions}
+        />
       </div>
     </div>
   );

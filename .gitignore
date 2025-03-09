@@ -1,0 +1,74 @@
+# Docker
+.env
+.env.local
+.docker.env
+.docker/
+docker-compose.override.yml
+docker-compose.yml.local
+*.log
+
+# Build artifacts
+dist/
+build/
+out/
+target/
+*.exe
+*.so
+*.dll
+*.class
+*.jar
+*.war
+*.o
+*.a
+
+# Dependency directories
+node_modules/
+vendor/
+bower_components/
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# IDE and editors
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+.project
+.classpath
+*.iml
+*.ipr
+*.iws
+.settings/
+*.swp
+*.swo
+*~
+.vs/
+.editorconfig
+
+# Logs and databases
+*.log
+*.sqlite
+*.sqlite3
+*.db
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Temporary files
+tmp/
+temp/
+.tmp/
+.temp/
+*.tmp
+*.temp
+*.bak
+*.swp
+*~.nib
+

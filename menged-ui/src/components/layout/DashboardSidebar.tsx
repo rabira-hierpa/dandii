@@ -7,7 +7,7 @@ import {
   Calendar,
   LucideIcon,
   Map,
-  Road,
+  TrafficCone,
   Settings,
 } from "lucide-react";
 
@@ -48,7 +48,7 @@ export function DashboardSidebar() {
           <SidebarItem href="/dashboard" icon={BarChart3} title="Analytics" />
           <SidebarItem
             href="/dashboard/road-closures"
-            icon={Road}
+            icon={TrafficCone}
             title="Road Closures"
           />
           <SidebarItem

@@ -1,0 +1,195 @@
+route_type,route_short_name,route_long_name,agency_id,route_id,route_desc,route_color,route_text_color
+3,AB097,Megenegna Terminal ↔ Legedadi Mission,AA,10400029,,1779c2,ffffff
+3,AB101,Megenagna Terminal ↔ Aba Kiros Roundabout,AA,10400258,,1779c2,ffffff
+3,AB049,Megenegna Terminal ↔ Ayat Chefe Condominium,AA,10400405,,1779c2,ffffff
+3,AB083,Ayat Chefe Condominium ↔ 6 Kilo,AA,10406491,,1779c2,ffffff
+3,AB010,Kotebe Teachers College ↔ Piassa Arada,AA,10407732,,1779c2,ffffff
+3,AB009,Piassa Arada ↔ Brass Clinic (Bole),AA,10410198,,1779c2,ffffff
+3,AB061,Legehar (Old Train Station) ↔ Ayat Chefe Condominium,AA,10441511,,1779c2,ffffff
+3,SH027,Shero Meda ↔ Bole Millenium,AA,10458768,,1779c2,ffffff
+3,SH028,Shero Meda ↔ Abo Junction,AA,10460046,,1779c2,ffffff
+3,SH016,Piassa Arada ↔ Abo Junction,AA,10460168,,1779c2,ffffff
+3,SH004,Yeka Abado ↔ Megenagna,AA,10460407,,1779c2,ffffff
+3,SH010,Autobis Tera (2) ↔ Alem Bank,AA,10460602,,1779c2,ffffff
+3,A10,Mexico ↔ Haile Garment,AA,10460963,,1779c2,ffffff
+3,SH040,Kara Kore ↔ Autobis Tera (1),AA,10461811,,1779c2,ffffff
+3,D26,Yerer Goro ↔ Megenagna,AA,10465903,,1779c2,ffffff
+3,A24,Mexico ↔ Megenagna,AA,10466290,,1779c2,ffffff
+3,C15,Piassa Arada ↔ Mebrat Condominium,AA,10466725,,1779c2,ffffff
+3,C14,Sansusi ↔ Piassa Arada,AA,10468435,,1779c2,ffffff
+3,A08,Gurara ↔ 4 Kilo,AA,10469388,,1779c2,ffffff
+3,C31,Piassa Arada ↔ Dil Ber,AA,10478792,,1779c2,ffffff
+3,B37,Shero Meda ↔ Autobis Tera (3),AA,10479678,,1779c2,ffffff
+3,B19,Autobis Tera (1) ↔ Abo Junction,AA,10480005,,1779c2,ffffff
+3,A09,Mexico ↔ Alem Bank,AA,10480336,,1779c2,ffffff
+3,D52,Koye Feche ↔ Megenagna,AA,10521543,,1779c2,ffffff
+3,D25,Summit Condominiums ↔ Megenagna Terminal,AA,10521610,,1779c2,ffffff
+3,B35,Autobis Tera (2) ↔ Kela,AA,10529108,,1779c2,ffffff
+3,B40,Saris Abo ↔ Ayer Tena,AA,10529704,,1779c2,ffffff
+3,C51,Yeka Abado ↔ Piassa Arada,AA,10533497,,1779c2,ffffff
+3,D23,Megenagna Terminal ↔ Aba Kiros Roundabout,AA,10533758,,1779c2,ffffff
+3,A05,Mexico ↔ Lafto,AA,10534180,,1779c2,ffffff
+3,A01,Shero Meda ↔ Mexico,AA,10534541,,1779c2,ffffff
+3,C17,Piassa Arada ↔ Marathon Motor (Megenagna),AA,10534848,,1779c2,ffffff
+3,B22,Autobis Tera ↔ Asko,AA,10535103,,1779c2,ffffff
+3,A04,Sefera ↔ Mexico,AA,10541125,,1779c2,ffffff
+3,A18,Piassa Arada ↔ Jemmo 2,AA,10541371,,1779c2,ffffff
+3,A02,Mexico ↔ Jemo 1,AA,10542001,,1779c2,ffffff
+3,B35B,Merkato ↔ Ashewa Meda,AA,10542096,,1779c2,ffffff
+3,C50,kera ↔ Addisu Gebeya,AA,10542241,,1779c2,ffffff
+3,AB032,Hanna Mariam ↔ Legehar (Old Train Station),AA,10547202,,1779c2,ffffff
+3,AB018,Yeshi Debele ↔ Autobis Tera,AA,10550063,,1779c2,ffffff
+3,AB087,Winget ↔ Ayer Tena (Terminal),AA,10550163,,1779c2,ffffff
+3,AB110,Tulu Dimtu ↔ 6 Kilo,AA,10550650,,1779c2,ffffff
+3,AB047,Shegole (Mender 7) ↔ Autobis Tera,AA,10551230,,1779c2,ffffff
+3,AB028,Sansusi ↔ Autobis Tera,AA,10551231,,1779c2,ffffff
+3,AB041,Eyesus ↔ Autobis Tera,AA,10551605,,1779c2,ffffff
+3,AB003,Ayer Tena ↔ Piassa Arada,AA,15625520,,1779c2,ffffff
+3,AB034,German Square ↔ Autobis Tera,AA,15656246,,1779c2,ffffff
+3,AB004,Kality Meneharia ↔ Autobis Tera,AA,16067901,,1779c2,ffffff
+3,AB006,kera ↔ Addisu Gebeya,AA,16068007,,1779c2,ffffff
+3,AB027,Mexico ↔ Gelan Condominium,AA,16068572,,1779c2,ffffff
+3,AB033,Kotebe Gebriel ↔ Arat Kilo,AA,16068674,,1779c2,ffffff
+3,AB036,Legehar (Old Train Station) ↔ Kara Kore,AA,16068754,,1779c2,ffffff
+3,AB037,Yeshi Debele ↔ St. George Church,AA,16068915,,1779c2,ffffff
+3,AB055,Legehar (Old Train Station) ↔ Gurara,AA,16069113,,1779c2,ffffff
+3,AB056,Saris Abo ↔ Shero Meda,AA,16069192,,1779c2,ffffff
+3,AB058,Legehar (Old Train Station) ↔ Alem Bank,AA,16069231,,1779c2,ffffff
+3,AB064,Megenagna ↔ Gurara,AA,16069472,,1779c2,ffffff
+3,AB065,Autobis Tera ↔ Alem Bank,AA,16069558,,1779c2,ffffff
+3,AB066,Kara Kore ↔ Autobis Tera,AA,16070513,,1779c2,ffffff
+3,AB068,Menlik Hospital ↔ Torhailoch,AA,16070566,,1779c2,ffffff
+3,AB070,Ayer Tena ↔ Abuare Roundabout,AA,16071249,,1779c2,ffffff
+3,AB077,Kera ↔ Ayer Tena,AA,16071322,,1779c2,ffffff
+3,AB029,Yerer Goro ↔ Mexico,AA,16071554,,1779c2,ffffff
+3,AB090,Betel ↔ Legehar (Old Train Station),AA,16071657,,1779c2,ffffff
+3,AB092,Hana Mariam ↔ Darmar,AA,16071828,,1779c2,ffffff
+3,AB094,Piassa Arada ↔ Mikili Land,AA,16072018,,1779c2,ffffff
+3,AB099,Alem Bank ↔ Ayer Tena,AA,16072169,,1779c2,ffffff
+3,AB100,Jemmo 3 ↔ Autobis Tera,AA,16072247,,1779c2,ffffff
+3,AB102,Kara ↔ Legehar (Old Train Station),AA,16072458,,1779c2,ffffff
+3,AB105,Anfo Meda ↔ Legehar (Old Train Station),AA,16074160,,1779c2,ffffff
+3,AB109,Saris Abo ↔ Tulu Dimtu Adebabay,AA,16074208,,1779c2,ffffff
+3,AB117,Sefera ↔ Mexico,AA,16074342,,1779c2,ffffff
+3,AB045,Dil Ber ↔ Legehar (Old Train Station),AA,16074676,,1779c2,ffffff
+3,AB062,Legehar (Old Train Station) ↔ Sebeta,AA,16074771,,1779c2,ffffff
+3,AB071,Gerji Mebrat Haile ↔ Darmar,AA,16074871,,1779c2,ffffff
+3,AB111,Piassa Arada ↔ Gefersa,AA,16075030,,1779c2,ffffff
+3,SH012,Sansusi ↔ Autobis Tera,AA,16086556,,1779c2,ffffff
+3,SH009,Ayer Tena ↔ Autobis Tera (2),AA,16088269,,1779c2,ffffff
+3,D46,Megenagna Terminal ↔ Bole Arabsa,AA,16088616,,1779c2,ffffff
+3,SH035,Shero Meda ↔ Megenagna,AA,16088617,,1779c2,ffffff
+3,SH022,Mexico ↔ Hana Mariam (2),AA,16088618,,1779c2,ffffff
+3,SH015,Bole Millenium ↔ 4 Kilo,AA,16088619,,1779c2,ffffff
+3,AB012,Gurara ↔ Autobis Tera,AA,16112803,,1779c2,ffffff
+3,AB007,Megenagna ↔ Aleltu,AA,16112804,,1779c2,ffffff
+3,AB025,Legehar (Old Train Station) ↔ Akaki Korkoro,AA,16112805,,1779c2,ffffff
+3,AB019,Sansusi ↔ Piassa Arada,AA,16112806,,1779c2,ffffff
+3,AB031,Shero Meda ↔ Legehar (Old Train Station),AA,16113471,,1779c2,ffffff
+3,AB085,Holeta ↔ Merkato,AA,16148441,,1779c2,ffffff
+3,AB067,Legehar (Old Train Station) ↔ Jemmo 3,AA,16148442,,1779c2,ffffff
+3,AB030,Sululta ↔ Autobis Tera,AA,16148443,,1779c2,ffffff
+3,AB079,Summit Condominuiums ↔ Arat Kilo,AA,16151480,,1779c2,ffffff
+3,AB021,File Doro ↔ Autobis Tera,AA,16151481,,1779c2,ffffff
+3,AB098,Saris Abo ↔ Dukem,AA,16239079,,1779c2,ffffff
+3,AB060,Legehar (Old Train Station) ↔ DebreZeit,AA,16239080,,1779c2,ffffff
+3,AB048,Addisu Gebeya ↔ Bole Mickael,AA,16290773,,1779c2,ffffff
+3,AB057,Legehar (Old Train Station) ↔ Kara,AA,16290774,,1779c2,ffffff
+3,AB022,Summit Condominiums ↔ Legehar (Old Train Station),AA,16290775,,1779c2,ffffff
+3,AB002,Mekanisa Kore ↔ Autobis Tera,AA,16761109,,1779c2,ffffff
+3,AB005,St. George Church ↔ Mekanisa Kore,AA,16761258,,1779c2,ffffff
+3,AB011,Summit Condominiums ↔ Piassa Arada,AA,16761408,,1779c2,ffffff
+3,AB043,Menagesha ↔ Autobis Tera,AA,16761711,,1779c2,ffffff
+3,AB059,Piassa Arada ↔ Bethel,AA,16761937,,1779c2,ffffff
+3,AB063,Mikili Land ↔ Autobis Tera,AA,16763531,,1779c2,ffffff
+3,AB072,Saris ↔ Hana Mariam,AA,16763585,,1779c2,ffffff
+3,AB073,Winget ↔ Stadium,AA,16763690,,1779c2,ffffff
+3,AB080,Shero Meda ↔ Megenagna,AA,16763761,,1779c2,ffffff
+3,AB086,Saris Abo ↔ Ayer Tena,AA,16763787,,1779c2,ffffff
+3,AB093,Megenagna ↔ Bole Bulbula,AA,16763889,,1779c2,ffffff
+3,AB108,Piassa Arada ↔ Addis Sefer,AA,16764498,,1779c2,ffffff
+3,AB120,Megenagna ↔ Kilinto,AA,16764670,,1779c2,ffffff
+3,AB122,Entoto Mariam ↔ 4 Kilo,AA,16764708,,1779c2,ffffff
+3,AB124,Tulu Dimtu ↔ Megenagna,AA,16764849,,1779c2,ffffff
+3,AB126,Piassa Arada ↔ Bole Arabsa,AA,16765470,,1779c2,ffffff
+3,AB130,Megenagna ↔ Ayer Tena,AA,16765619,,1779c2,ffffff
+3,AB131,Koye Feche ↔ Piassa Arada,AA,16765723,,1779c2,ffffff
+3,AB008,Raguel Church ↔ Kechenie,AA,16793879,,1779c2,ffffff
+3,AB103,Piassa Arada ↔ Jemmo 3,AA,16794104,,1779c2,ffffff
+3,AB107,Tulu Dimtu ↔ Piassa Arada,AA,16794335,,1779c2,ffffff
+3,AB112,Megenagna ↔ Addisu Gebeya,AA,16794581,,1779c2,ffffff
+3,AB113,Megenagna ↔ Koye Feche,AA,16794648,,1779c2,ffffff
+3,AB118,Kela ↔ Autobis Tera,AA,16794702,,1779c2,ffffff
+3,AB119,Summit Condominiums ↔ Megenagna Terminal,AA,16794769,,1779c2,ffffff
+3,AB125,Megenagna ↔ Haile Garment,AA,16794971,,1779c2,ffffff
+3,AB128,Yeka Abado ↔ Mexico,AA,16795336,,1779c2,ffffff
+3,AB127,Bole Arabsa ↔ Mexico,AA,16798923,,1779c2,ffffff
+3,AB013,Raguel Church ↔ Bela Mazorya,AA,16799067,,1779c2,ffffff
+3,AB020,Raguel Church ↔ Dil Ber,AA,16799388,,1779c2,ffffff
+3,AB023,Lamberet ↔ Autobis Tera,AA,16799566,,1779c2,ffffff
+3,AB040,Raguel Church ↔ Kera,AA,16799821,,1779c2,ffffff
+3,AB042,Summit Condominiums ↔ Bole,AA,16799950,,1779c2,ffffff
+3,AB046,Gerji ↔ Arat Kilo,AA,16800759,,1779c2,ffffff
+3,AB050,Mexico ↔ Alem Gena,AA,16803209,,1779c2,ffffff
+3,AB051,Bethel ↔ Autobis Tera,AA,16803318,,1779c2,ffffff
+3,AB052,Gerji ↔ Autobis Tera,AA,16803475,,1779c2,ffffff
+3,AB054,Mexico ↔ Lafto,AA,16803572,,1779c2,ffffff
+3,AB078,Megenagna ↔ Jemmo 2,AA,16804052,,1779c2,ffffff
+3,AB081,Sansusi ↔ Megenagna,AA,16804748,,1779c2,ffffff
+3,AB089,Sendafa ↔ Raguel Church,AA,16807402,,1779c2,ffffff
+3,AB129,Yeka Abado ↔ Piassa Arada,AA,16807587,,1779c2,ffffff
+3,AB026,Sebeta ↔ Autobis Tera,AA,16810442,,1779c2,ffffff
+3,SH100,Piassa Arada ↔ Ajamba,AA,16813413,,1779c2,ffffff
+3,SH101,Piassa Arada ↔ Ferensay,AA,16813486,,1779c2,ffffff
+3,SH103,St. George Church ↔ Addisu Gebeya,AA,16813875,,1779c2,ffffff
+3,SH066,Megenagna Terminal ↔ Aba Kiros Roundabout,AA,16814055,,1779c2,ffffff
+3,SH067,Mexico ↔ Aba Kiros,AA,16814777,,1779c2,ffffff
+3,SH068,Mexico ↔ Kara Kore,AA,16814864,,1779c2,ffffff
+3,SH069,Sebeta ↔ Ayer Tena,AA,16815120,,1779c2,ffffff
+3,SH070,Yeka Abado ↔ Mexico,AA,16815233,,1779c2,ffffff
+3,SH071,Piassa Arada ↔ Betel,AA,16815447,,1779c2,ffffff
+3,SH072,Mexico ↔ Bole Bridge,AA,16815552,,1779c2,ffffff
+3,SH073,Mexico ↔ Gurara,AA,16815658,,1779c2,ffffff
+3,SH074,Mexico ↔ Haile Garment,AA,16815683,,1779c2,ffffff
+3,SH075,Mexico ↔ Jemmo 2,AA,16815787,,1779c2,ffffff
+3,SH076,Yeshi Debele ↔ Autobis Tera,AA,16816053,,1779c2,ffffff
+3,SH077,Yeka Abado ↔ Tulu Dimtu,AA,16817583,,1779c2,ffffff
+3,SH078,Summit Condominiums ↔ Bole,AA,16817599,,1779c2,ffffff
+3,SH079,Bole Bridge ↔ Addisu Gebeya,AA,16817834,,1779c2,ffffff
+3,SH080,Megenagna ↔ Addisu Gebeya,AA,16817865,,1779c2,ffffff
+3,SH081,Megenagna ↔ Ayer Tena,AA,16817897,,1779c2,ffffff
+3,SH082,Megenagna ↔ Bole Bulbula,AA,16817958,,1779c2,ffffff
+3,SH083,Kality Meneharia ↔ Bole Bridge,AA,16819131,,1779c2,ffffff
+3,SH085,Jemo 1 ↔ Autobis Tera,AA,16819161,,1779c2,ffffff
+3,SH086,Stadium ↔ Kality Meneharia,AA,16820941,,1779c2,ffffff
+3,SH087,Gurara ↔ 4 Kilo,AA,16820954,,1779c2,ffffff
+3,SH088,Yeshi Total ↔ Tulu Dimtu Adebabay,AA,16820988,,1779c2,ffffff
+3,SH089,Megenagna ↔ Haile Garment,AA,16821152,,1779c2,ffffff
+3,SH090,Saris ↔ Kality Meneharia,AA,16821389,,1779c2,ffffff
+3,SH091,Saris ↔ Koye Feche,AA,16821505,,1779c2,ffffff
+3,SH092,Megenagna ↔ Saris Abo,AA,16821697,,1779c2,ffffff
+3,SH093,Yeshi Total ↔ Saris Abo,AA,16822289,,1779c2,ffffff
+3,SH095,Megenagna ↔ Ferensay,AA,16822421,,1779c2,ffffff
+3,SH096,Megenagna ↔ Gelan Condominium,AA,16822501,,1779c2,ffffff
+3,SH097,Sululta ↔ Addisu Gebeya,AA,16822668,,1779c2,ffffff
+3,SH099,Piassa Arada ↔ Bole Bridge,AA,16822706,,1779c2,ffffff
+3,AB044,Legedadi ↔ Megenagna,AA,17008501,,1779c2,ffffff
+3,AB001,Tafo Square ↔ Piassa Arada,AA,17008592,,1779c2,ffffff
+3,AB014,Piassa Arada ↔ Bole Bulbula,AA,17008890,,1779c2,ffffff
+3,AB015,Raguel Church ↔ Megenagna,AA,17010982,,1779c2,ffffff
+3,AB016,Kidane Mihret ↔ Raguel Church,AA,17011008,,1779c2,ffffff
+3,AB017,Entoto Mariam ↔ Raguel Church,AA,17011060,,1779c2,ffffff
+3,AB106,Mexico ↔ Koye Feche,AA,17032690,,1779c2,ffffff
+3,AB121,Tulu Dimtu ↔ Mexico,AA,17032741,,1779c2,ffffff
+3,AB123,Piassa Arada ↔ Alem Bank Silase,AA,17032887,,1779c2,ffffff
+3,AB076,Megenagna ↔ Gelan Condominium,AA,17033336,,1779c2,ffffff
+3,AB082,Yerer Goro ↔ Megenagna,AA,17034807,,1779c2,ffffff
+3,AB095,Merkato ↔ Addis Alem,AA,17039849,,1779c2,ffffff
+3,AB104,Addisu Gebeya ↔ Kality Menaheria,AA,17047999,,1779c2,ffffff
+3,AB024,Dire Sololiya ↔ Autobis Tera,AA,17052323,,1779c2,ffffff
+3,AB036 (S),Mexico ↔ Kara Kore,AA,17071085,,1779c2,ffffff
+3,SH105,Piassa Arada ↔ Jemmo 1,AA,17071140,,1779c2,ffffff
+3,AB058 (S),Alem Bank ↔ Mexico,AA,17073030,,1779c2,ffffff
+3,AB091,Teji ↔ Merkato,AA,17082329,,1779c2,ffffff
+3,AB088,Chancho ↔ Autobis Tera,AA,17332417,,1779c2,ffffff
+3,AB053,6 Kilo ↔ Bole Mickael,AA,17065220,,1779c2,ffffff

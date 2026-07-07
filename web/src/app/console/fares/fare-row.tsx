@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Controller, useFieldArray, useForm } from "react-hook-form";
+import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
 import { Plus, Trash01 } from "@untitledui/icons";
 import { fareSchema, type FareInput } from "@/actions/fare-schema";
 import { updateFare } from "@/actions/fares";
@@ -62,7 +62,7 @@ export function FareRow({
             tiers: data.tiers.length > 0 ? data.tiers : DEFAULT_TIERS,
           },
   });
-  const kind = form.watch("kind");
+  const kind = useWatch({ control: form.control, name: "kind" });
   const { fields, append, remove } = useFieldArray({
     control: form.control,
     // Cast: "tiers" only exists on the TIERED branch of the union.

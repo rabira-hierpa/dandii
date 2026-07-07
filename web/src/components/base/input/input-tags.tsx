@@ -1,7 +1,7 @@
 "use client";
 
 import type { Key, KeyboardEvent, ReactNode } from "react";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { HelpCircle, InfoCircle } from "@untitledui/icons";
 import { Group as AriaGroup, Input as AriaInput } from "react-aria-components";
 import { HintText } from "@/components/base/input/hint-text";
@@ -11,8 +11,12 @@ import { Tooltip, TooltipTrigger } from "@/components/base/tooltip/tooltip";
 import { cx, sortCx } from "@/utils/cx";
 
 interface TagEntry {
-    id: number;
+    id: string;
     label: string;
+}
+
+function entryId(label: string, index: number) {
+    return `${index}:${label}`;
 }
 
 export interface InputTagsProps {
@@ -84,46 +88,22 @@ export const InputTags = ({
     hideRequiredIndicator,
 }: InputTagsProps) => {
     const isControlled = value !== undefined;
-    const idCounter = useRef(0);
-    const nextId = () => idCounter.current++;
+    const [idSeq, setIdSeq] = useState(0);
 
     const inputRef = useRef<HTMLInputElement>(null);
     const tagGroupRef = useRef<HTMLDivElement>(null);
     const [inputValue, setInputValue] = useState("");
 
-    const [internalEntries, setInternalEntries] = useState<TagEntry[]>(() => (defaultValue ?? []).map((label) => ({ id: nextId(), label })));
+    const [internalEntries, setInternalEntries] = useState<TagEntry[]>(() =>
+        (defaultValue ?? []).map((label, index) => ({ id: entryId(label, index), label })),
+    );
 
-    // For controlled mode, maintain stable IDs across renders so React keys don't shift
-    const prevControlledValue = useRef<string[]>([]);
-    const controlledEntries = useRef<TagEntry[]>([]);
+    const controlledEntries = useMemo(
+        () => (value ?? []).map((label, index) => ({ id: entryId(label, index), label })),
+        [value],
+    );
 
-    const entries = (() => {
-        if (!isControlled) return internalEntries;
-
-        const prev = prevControlledValue.current;
-        if (prev === value) return controlledEntries.current;
-
-        // Reconcile: reuse existing IDs for tags that haven't changed position,
-        // assign new IDs only for genuinely new entries
-        const oldEntries = controlledEntries.current;
-        const newEntries: TagEntry[] = [];
-        const usedOldIndices = new Set<number>();
-
-        for (const label of value) {
-            // Try to find a matching old entry (same label, not yet used)
-            const oldIndex = oldEntries.findIndex((e, i) => e.label === label && !usedOldIndices.has(i));
-            if (oldIndex !== -1) {
-                usedOldIndices.add(oldIndex);
-                newEntries.push(oldEntries[oldIndex]);
-            } else {
-                newEntries.push({ id: nextId(), label });
-            }
-        }
-
-        prevControlledValue.current = value;
-        controlledEntries.current = newEntries;
-        return newEntries;
-    })();
+    const entries = isControlled ? controlledEntries : internalEntries;
 
     const tags = entries.map((e) => e.label);
 
@@ -135,21 +115,22 @@ export const InputTags = ({
             if (maxTags && tags.length >= maxTags) return false;
             if (validate && !validate(trimmed)) return false;
 
-            const newEntry: TagEntry = { id: nextId(), label: trimmed };
+            const newEntry: TagEntry = { id: `tag-${idSeq}`, label: trimmed };
             const newEntries = [...entries, newEntry];
 
             if (!isControlled) {
                 setInternalEntries(newEntries);
+                setIdSeq((current) => current + 1);
             }
             onChange?.(newEntries.map((e) => e.label));
             onTagAdded?.(trimmed);
             return true;
         },
-        [tags, entries, isControlled, allowDuplicates, maxTags, validate, onChange, onTagAdded],
+        [tags, entries, isControlled, allowDuplicates, maxTags, validate, onChange, onTagAdded, idSeq],
     );
 
     const removeTag = useCallback(
-        (id: number) => {
+        (id: string) => {
             const entry = entries.find((e) => e.id === id);
             if (!entry) return;
 
@@ -167,7 +148,7 @@ export const InputTags = ({
     const handleRemove = useCallback(
         (keys: Set<Key>) => {
             for (const key of keys) {
-                removeTag(key as number);
+                removeTag(String(key));
             }
             if (entries.length - keys.size <= 0) {
                 setTimeout(() => inputRef.current?.focus(), 0);

@@ -1,7 +1,7 @@
 "use client";
 
 import type { Key, KeyboardEvent, ReactNode } from "react";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { HintText } from "@/components/base/input/hint-text";
 import { InputBase } from "@/components/base/input/input";
 import { Label } from "@/components/base/input/label";
@@ -11,6 +11,10 @@ import { cx } from "@/utils/cx";
 interface TagEntry {
     id: string;
     label: string;
+}
+
+function entryId(label: string, index: number) {
+    return `${index}:${label}`;
 }
 
 export interface InputTagsOuterProps {
@@ -82,41 +86,19 @@ export const InputTagsOuter = ({
     hideRequiredIndicator,
 }: InputTagsOuterProps) => {
     const isControlled = value !== undefined;
-    const idCounter = useRef(0);
-    const nextId = () => `tag-${idCounter.current++}`;
-
+    const [idSeq, setIdSeq] = useState(0);
     const [inputValue, setInputValue] = useState("");
 
-    const [internalEntries, setInternalEntries] = useState<TagEntry[]>(() => (defaultValue ?? []).map((label) => ({ id: nextId(), label })));
+    const [internalEntries, setInternalEntries] = useState<TagEntry[]>(() =>
+        (defaultValue ?? []).map((label, index) => ({ id: entryId(label, index), label })),
+    );
 
-    const prevControlledValue = useRef<string[]>([]);
-    const controlledEntries = useRef<TagEntry[]>([]);
+    const controlledEntries = useMemo(
+        () => (value ?? []).map((label, index) => ({ id: entryId(label, index), label })),
+        [value],
+    );
 
-    const entries = (() => {
-        if (!isControlled) return internalEntries;
-
-        const prev = prevControlledValue.current;
-        if (prev === value) return controlledEntries.current;
-
-        const oldEntries = controlledEntries.current;
-        const newEntries: TagEntry[] = [];
-        const usedOldIndices = new Set<number>();
-
-        for (const label of value) {
-            const oldIndex = oldEntries.findIndex((e, i) => e.label === label && !usedOldIndices.has(i));
-            if (oldIndex !== -1) {
-                usedOldIndices.add(oldIndex);
-                newEntries.push(oldEntries[oldIndex]);
-            } else {
-                newEntries.push({ id: nextId(), label });
-            }
-        }
-
-        prevControlledValue.current = value;
-        controlledEntries.current = newEntries;
-        return newEntries;
-    })();
-
+    const entries = isControlled ? controlledEntries : internalEntries;
     const tags = entries.map((e) => e.label);
 
     const addTag = useCallback(
@@ -127,17 +109,18 @@ export const InputTagsOuter = ({
             if (maxTags && tags.length >= maxTags) return false;
             if (validate && !validate(trimmed)) return false;
 
-            const newEntry: TagEntry = { id: nextId(), label: trimmed };
+            const newEntry: TagEntry = { id: `tag-${idSeq}`, label: trimmed };
             const newEntries = [...entries, newEntry];
 
             if (!isControlled) {
                 setInternalEntries(newEntries);
+                setIdSeq((current) => current + 1);
             }
             onChange?.(newEntries.map((e) => e.label));
             onTagAdded?.(trimmed);
             return true;
         },
-        [tags, entries, isControlled, allowDuplicates, maxTags, validate, onChange, onTagAdded],
+        [tags, entries, isControlled, allowDuplicates, maxTags, validate, onChange, onTagAdded, idSeq],
     );
 
     const removeTag = useCallback(
@@ -159,7 +142,7 @@ export const InputTagsOuter = ({
     const handleRemove = useCallback(
         (keys: Set<Key>) => {
             for (const key of keys) {
-                removeTag(key.toString());
+                removeTag(String(key));
             }
         },
         [removeTag],

@@ -63,19 +63,17 @@ function StopPicker({
   onSelect: (stop: StopSearchResult | null) => void;
 }) {
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<StopSearchResult[]>([]);
+  const [fetchedResults, setFetchedResults] = useState<StopSearchResult[]>([]);
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const results = query.trim().length < 2 ? [] : fetchedResults;
 
   useEffect(() => {
-    if (query.trim().length < 2) {
-      setResults([]);
-      return;
-    }
+    if (query.trim().length < 2) return;
     const handle = setTimeout(async () => {
       const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
       const data = await res.json();
-      setResults(data.stops ?? []);
+      setFetchedResults(data.stops ?? []);
       setOpen(true);
     }, 250);
     return () => clearTimeout(handle);

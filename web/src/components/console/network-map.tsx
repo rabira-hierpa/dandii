@@ -47,6 +47,12 @@ function toLocalInputValue(date: Date) {
   return new Date(date.getTime() - offset * 60_000).toISOString().slice(0, 16);
 }
 
+function fetchRouteGeojson() {
+  return fetch(`/api/geo/routes?t=${Date.now()}`, { cache: "no-store" }).then(
+    (res) => res.json() as Promise<GeoJSON.FeatureCollection>,
+  );
+}
+
 export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
   const router = useRouter();
   const { selectedRouteId, setSelectedRouteId } = useMapStore();
@@ -65,15 +71,18 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
   );
 
   const loadGeojson = useCallback(async () => {
-    const res = await fetch(`/api/geo/routes?t=${Date.now()}`, {
-      cache: "no-store",
-    });
-    setGeojson(await res.json());
+    setGeojson(await fetchRouteGeojson());
   }, []);
 
   useEffect(() => {
-    loadGeojson();
-  }, [loadGeojson]);
+    let cancelled = false;
+    void fetchRouteGeojson().then((data) => {
+      if (!cancelled) setGeojson(data);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const routeById = useMemo(
     () => new Map(routes.map((r) => [r.id, r])),

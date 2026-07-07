@@ -39,21 +39,39 @@ export function MembersTable({
   const assignable = ASSIGNABLE_ROLES[currentRole] ?? [];
 
   const load = useCallback(async () => {
-    setError(null);
     const { data, error } = await authClient.admin.listUsers({
       query: { limit: 200, sortBy: "createdAt", sortDirection: "desc" },
     });
     if (error) {
       setError(error.message ?? "Failed to load members");
+      setMembers([]);
     } else {
+      setError(null);
       setMembers((data?.users as MemberRow[]) ?? []);
     }
     setLoading(false);
   }, []);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    let cancelled = false;
+    void (async () => {
+      const { data, error } = await authClient.admin.listUsers({
+        query: { limit: 200, sortBy: "createdAt", sortDirection: "desc" },
+      });
+      if (cancelled) return;
+      if (error) {
+        setError(error.message ?? "Failed to load members");
+        setMembers([]);
+      } else {
+        setError(null);
+        setMembers((data?.users as MemberRow[]) ?? []);
+      }
+      setLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   /** Admins cannot manage other admins/super-admins; nobody manages themselves. */
   const canManage = (member: MemberRow) => {

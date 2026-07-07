@@ -27,7 +27,10 @@ services:
     container_name: otp-routing
     restart: unless-stopped
     ports:
-      - "127.0.0.1:8080:8080"
+      # Host port 8081 (not 8080) — avoids clashing with another app already
+      # using 8080 on the VPS. Internal container port stays 8080; `web`
+      # talks to it over the Docker network via OTP_URL=http://otp:8080.
+      - "127.0.0.1:8081:8080"
     volumes:
       # Contains addis-ababa.osm.pbf + et-addisababa-gtfs-2026.zip; OTP
       # rebuilds and saves graph.obj on start.

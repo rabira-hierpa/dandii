@@ -88,7 +88,7 @@ menged/
 | `BETTER_AUTH_URL` | Public origin (http://localhost:3000 in dev) |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | OAuth credentials; redirect URI is `<origin>/api/auth/callback/google` |
 | `SUPER_ADMIN_EMAIL` | First user with this email becomes super-admin |
-| `OTP_URL` | OpenTripPlanner origin (http://localhost:8080 in dev) |
+| `OTP_URL` | OpenTripPlanner origin (http://localhost:8081 in dev — host port 8081 avoids clashing with other apps on 8080) |
 
 ## Production (Docker / Coolify)
 

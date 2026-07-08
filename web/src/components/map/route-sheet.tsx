@@ -18,7 +18,7 @@ export function RouteSheet({
   onClose: () => void;
 }) {
   return (
-    <div className="pointer-events-auto flex min-h-0 w-90 flex-col overflow-hidden rounded-2xl bg-white shadow-xl ring-1 ring-black/5 max-sm:w-full">
+    <div className="pointer-events-auto flex min-h-0 w-full flex-col overflow-hidden rounded-2xl bg-[#F8F9FA]">
       <div className="flex items-start gap-2.5 border-b border-[#EEF1EA] p-4">
         <RouteChip
           shortName={detail.shortName}

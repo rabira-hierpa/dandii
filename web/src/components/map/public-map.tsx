@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import MapGl, {
   Layer,
-  Marker,
   Source,
   type MapLayerMouseEvent,
   type MapRef,
@@ -13,10 +12,18 @@ import type { FilterSpecification } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { SearchLg } from "@untitledui/icons";
 import { RouteChip } from "@/components/console/route-chip";
-import { CLOSED_ROUTE_COLOR, OPERATOR_META } from "@/lib/operators";
+import {
+  CLOSED_ROUTE_COLOR,
+  OPERATOR_CODES,
+  OPERATOR_META,
+} from "@/lib/operators";
 import { useMapStore } from "@/stores/map-store";
 import { cx } from "@/utils/cx";
-import { JourneyPlanner } from "./journey-planner";
+import { BottomSheet } from "./bottom-sheet";
+import { DirectionsPanel, type DirectionsEndpoint } from "./directions-panel";
+import { FloatingControls } from "./floating-controls";
+import { LayersPanel } from "./layers-panel";
+import { BlueDotMarker } from "./markers";
 import {
   ADDIS_CENTER,
   applyRouteHoverTransitions,
@@ -26,11 +33,15 @@ import {
   ROUTE_LINE_COLOR,
   ROUTE_LINE_WIDTH,
 } from "./map-style";
+import {
+  MODE_META,
+  type ClassifiedItinerary,
+  type ModeKey,
+} from "./route-modes";
 import { decodePolyline } from "./polyline";
 import { RouteSheet } from "./route-sheet";
 import { StopMarkersLayer } from "./stop-markers-layer";
 import type {
-  OtpItinerary,
   RouteDetail,
   RouteHoverPreview,
   RouteSearchResult,
@@ -54,10 +65,19 @@ function boundsOf(coordinates: [number, number][]) {
   ] as [[number, number], [number, number]];
 }
 
-function legColor(mode: string) {
-  if (mode === "WALK") return CLOSED_ROUTE_COLOR;
-  if (mode === "TRAM" || mode === "RAIL") return OPERATOR_META.LRT.color;
-  return OPERATOR_META.SHEGER.color;
+/** Padding that keeps geometry clear of the sheet (mobile) or panel (desktop). */
+function fitPadding() {
+  const mobile =
+    typeof window !== "undefined" &&
+    window.matchMedia("(max-width: 639px)").matches;
+  return mobile
+    ? {
+        top: 90,
+        bottom: Math.round(window.innerHeight * 0.5),
+        left: 40,
+        right: 40,
+      }
+    : { top: 80, bottom: 80, left: 440, right: 80 };
 }
 
 const routeHoverCache = new Map<string, RouteHoverPreview>();
@@ -68,9 +88,12 @@ interface PublicMapProps {
 
 export function PublicMap({ user }: PublicMapProps) {
   const mapRef = useRef<MapRef>(null);
-  const { selectedRouteId, setSelectedRouteId } = useMapStore();
+  const { selectedRouteId, setSelectedRouteId, hiddenOperators, setSheetSnap } =
+    useMapStore();
 
-  const [geojson, setGeojson] = useState<GeoJSON.FeatureCollection | null>(null);
+  const [geojson, setGeojson] = useState<GeoJSON.FeatureCollection | null>(
+    null,
+  );
   const [hubStops, setHubStops] = useState<StopSearchResult[]>([]);
   const [hoveredRouteId, setHoveredRouteId] = useState<string | null>(null);
   const [fetchedHoverPreview, setFetchedHoverPreview] = useState<{
@@ -87,11 +110,33 @@ export function PublicMap({ user }: PublicMapProps) {
     routeId: string;
     detail: RouteDetail;
   } | null>(null);
-  const [itinerary, setItinerary] = useState<OtpItinerary | null>(null);
-  const [marker, setMarker] = useState<StopSearchResult | null>(null);
+  const [selectedStop, setSelectedStop] = useState<StopSearchResult | null>(
+    null,
+  );
+  const [stopBounceKey, setStopBounceKey] = useState(0);
+  const [myLocation, setMyLocation] = useState<{
+    lat: number;
+    lon: number;
+  } | null>(null);
+
+  // Directions state
+  const [directionsResults, setDirectionsResults] = useState<
+    ClassifiedItinerary[] | null
+  >(null);
+  const [activeMode, setActiveMode] = useState<ModeKey | null>(null);
+  const [endpoints, setEndpoints] = useState<{
+    from: DirectionsEndpoint;
+    to: DirectionsEndpoint;
+  } | null>(null);
+  // Lifted from DirectionsPanel — it renders twice (mobile sheet + desktop
+  // panel), so endpoint state must live here to stay in sync.
+  const [dirFrom, setDirFrom] = useState<DirectionsEndpoint | null>(null);
+  const [dirTo, setDirTo] = useState<DirectionsEndpoint | null>(null);
 
   const effectiveHoverId =
-    hoveredRouteId && hoveredRouteId !== selectedRouteId ? hoveredRouteId : null;
+    hoveredRouteId && hoveredRouteId !== selectedRouteId
+      ? hoveredRouteId
+      : null;
   const hoverPreview =
     effectiveHoverId == null
       ? null
@@ -105,6 +150,7 @@ export function PublicMap({ user }: PublicMapProps) {
     selectedRouteId && routeDetail?.routeId === selectedRouteId
       ? routeDetail.detail
       : null;
+  const hasDirections = directionsResults !== null && tab === "directions";
 
   useEffect(() => {
     fetch("/api/geo/routes")
@@ -124,7 +170,7 @@ export function PublicMap({ user }: PublicMapProps) {
       });
   }, []);
 
-  // Fetch stop list + full geometry for the hovered route.
+  // Fetch stop list + full geometry for the hovered route (desktop).
   useEffect(() => {
     if (!effectiveHoverId) return;
     if (routeHoverCache.has(effectiveHoverId)) return;
@@ -136,9 +182,7 @@ export function PublicMap({ user }: PublicMapProps) {
       const request = fetch(`/api/routes/${effectiveHoverId}/hover`, {
         signal: controller.signal,
       });
-      // Attach immediately so abort during cleanup cannot become an unhandled rejection.
       request.catch(() => {});
-
       void request
         .then((res) => (res.ok ? res.json() : null))
         .then((data: RouteHoverPreview | null) => {
@@ -146,10 +190,7 @@ export function PublicMap({ user }: PublicMapProps) {
           routeHoverCache.set(effectiveHoverId, data);
           setFetchedHoverPreview({ routeId: effectiveHoverId, data });
         })
-        .catch((error: unknown) => {
-          if (cancelled) return;
-          if (error instanceof DOMException && error.name === "AbortError") return;
-        });
+        .catch(() => {});
     }, 60);
 
     return () => {
@@ -162,7 +203,6 @@ export function PublicMap({ user }: PublicMapProps) {
   useEffect(() => {
     const map = mapRef.current?.getMap();
     if (!map || !hoveredRouteId) return;
-
     const apply = () => applyRouteHoverTransitions(map);
     if (map.isStyleLoaded()) apply();
     else map.once("idle", apply);
@@ -190,7 +230,7 @@ export function PublicMap({ user }: PublicMapProps) {
         if (data.geojson?.coordinates?.length) {
           mapRef.current?.fitBounds(
             boundsOf(data.geojson.coordinates as [number, number][]),
-            { padding: { top: 80, bottom: 80, left: 420, right: 80 }, duration: 800 },
+            { padding: fitPadding(), duration: 800 },
           );
         }
       });
@@ -199,16 +239,34 @@ export function PublicMap({ user }: PublicMapProps) {
     };
   }, [selectedRouteId]);
 
+  // Fit the active itinerary whenever mode/results change.
+  useEffect(() => {
+    if (!directionsResults || !activeMode) return;
+    const active = directionsResults.find((r) => r.mode === activeMode);
+    if (!active) return;
+    const coords = active.itinerary.legs.flatMap((leg) =>
+      leg.legGeometry ? decodePolyline(leg.legGeometry.points) : [],
+    );
+    if (coords.length > 0) {
+      mapRef.current?.fitBounds(boundsOf(coords), {
+        padding: fitPadding(),
+        duration: 700,
+      });
+    }
+  }, [directionsResults, activeMode]);
+
   const selectRoute = (routeId: string) => {
-    setItinerary(null);
-    setMarker(null);
+    setSelectedStop(null);
     setHoveredRouteId(null);
     setSelectedRouteId(routeId);
+    setSheetSnap("half");
   };
 
   const selectStop = (stop: StopSearchResult) => {
     setSelectedRouteId(null);
-    setMarker(stop);
+    setSelectedStop(stop);
+    setStopBounceKey((k) => k + 1);
+    setSheetSnap("half");
     mapRef.current?.flyTo({
       center: [stop.lon, stop.lat],
       zoom: 15,
@@ -216,28 +274,14 @@ export function PublicMap({ user }: PublicMapProps) {
     });
   };
 
-  const onItinerary = useCallback(
-    (next: OtpItinerary | null) => {
-      setSelectedRouteId(null);
-      setMarker(null);
-      setItinerary(next);
-      if (next) {
-        const coords = next.legs.flatMap((leg) =>
-          leg.legGeometry ? decodePolyline(leg.legGeometry.points) : [],
-        );
-        if (coords.length > 0) {
-          mapRef.current?.fitBounds(boundsOf(coords), {
-            padding: { top: 80, bottom: 80, left: 420, right: 80 },
-            duration: 800,
-          });
-        }
-      }
-    },
-    [setSelectedRouteId],
-  );
-
   const onMapClick = (event: MapLayerMouseEvent) => {
-    const feature = event.features?.[0];
+    if (hasDirections) return;
+    const feature = event.features?.find(
+      (f) =>
+        !hiddenOperators.includes(
+          f.properties?.operatorCode as (typeof hiddenOperators)[number],
+        ),
+    );
     if (feature) selectRoute(feature.properties.routeId as string);
   };
 
@@ -247,7 +291,7 @@ export function PublicMap({ user }: PublicMapProps) {
 
   const onMapMouseMove = useCallback(
     (event: MapLayerMouseEvent) => {
-      if (selectedRouteId || itinerary) return;
+      if (selectedRouteId || hasDirections) return;
       const feature = event.features?.find((f) => f.layer.id === "routes-all");
       const routeId = feature?.properties?.routeId as string | undefined;
       const canvas = mapRef.current?.getCanvas();
@@ -255,7 +299,7 @@ export function PublicMap({ user }: PublicMapProps) {
       if (routeId && routeId !== hoveredRouteId) previewRoute(routeId);
       else if (!routeId && hoveredRouteId) previewRoute(null);
     },
-    [hoveredRouteId, itinerary, previewRoute, selectedRouteId],
+    [hoveredRouteId, hasDirections, previewRoute, selectedRouteId],
   );
 
   const onMapMouseLeave = useCallback(() => {
@@ -264,17 +308,52 @@ export function PublicMap({ user }: PublicMapProps) {
     if (!selectedRouteId) previewRoute(null);
   }, [previewRoute, selectedRouteId]);
 
+  const onLocate = (coords: { lat: number; lon: number }) => {
+    setMyLocation(coords);
+    mapRef.current?.flyTo({
+      center: [coords.lon, coords.lat],
+      zoom: 15,
+      duration: 900,
+    });
+  };
+
   const hoverFilter: FilterSpecification = hoveredRouteId
     ? ["==", ["get", "routeId"], hoveredRouteId]
     : ["==", ["get", "routeId"], ""];
 
+  const visibleCodes = useMemo(
+    () => [
+      ...OPERATOR_CODES.filter((code) => !hiddenOperators.includes(code)),
+      "UNKNOWN",
+    ],
+    [hiddenOperators],
+  );
+
+  const overlayActive = Boolean(hoveredRouteId || detail || hasDirections);
+
+  /** Fade lines of hidden operators instead of hard filtering. */
+  const routeOpacity = useMemo(
+    () =>
+      [
+        "case",
+        [
+          "in",
+          ["coalesce", ["get", "operatorCode"], "UNKNOWN"],
+          ["literal", visibleCodes],
+        ],
+        overlayActive ? 0.18 : 0.62,
+        0,
+      ] as unknown as number,
+    [visibleCodes, overlayActive],
+  );
+
   const showHubStops =
-    tab === "explore" && !selectedRouteId && !itinerary && !hoveredRouteId;
+    tab === "explore" && !selectedRouteId && !hasDirections && !hoveredRouteId;
   const showHoverStops = Boolean(
     hoveredRouteId && hoverPreview?.stops.length && !selectedRouteId,
   );
   const showSelectedStops = Boolean(
-    selectedRouteId && detail?.stops.length && !itinerary,
+    selectedRouteId && detail?.stops.length && !hasDirections,
   );
 
   const detailGeojson = useMemo(
@@ -289,29 +368,218 @@ export function PublicMap({ user }: PublicMapProps) {
     [detail],
   );
 
-  const itineraryGeojson = useMemo(() => {
-    if (!itinerary) return null;
+  /** All alternatives, dimmed; the active mode is drawn on top, full color. */
+  const itinerariesGeojson = useMemo(() => {
+    if (!directionsResults) return null;
     return {
       type: "FeatureCollection",
-      features: itinerary.legs
-        .filter((leg) => leg.legGeometry)
-        .map((leg) => ({
-          type: "Feature" as const,
-          geometry: {
-            type: "LineString" as const,
-            coordinates: decodePolyline(leg.legGeometry!.points),
-          },
-          properties: { mode: leg.mode, color: legColor(leg.mode) },
-        })),
+      features: directionsResults.flatMap((result) =>
+        result.itinerary.legs
+          .filter((leg) => leg.legGeometry)
+          .map((leg) => ({
+            type: "Feature" as const,
+            geometry: {
+              type: "LineString" as const,
+              coordinates: decodePolyline(leg.legGeometry!.points),
+            },
+            properties: {
+              mode: result.mode,
+              walk: leg.mode === "WALK",
+              color: MODE_META[result.mode].color,
+              colorDim: MODE_META[result.mode].colorDim,
+            },
+          })),
+      ),
     } as GeoJSON.FeatureCollection;
-  }, [itinerary]);
+  }, [directionsResults]);
+
+  const activeFilter: FilterSpecification = [
+    "==",
+    ["get", "mode"],
+    activeMode ?? "",
+  ];
+  const inactiveFilter: FilterSpecification = [
+    "!=",
+    ["get", "mode"],
+    activeMode ?? "",
+  ];
 
   const hasSearchResults =
     query.trim().length >= 2 &&
     (results.routes.length > 0 || results.stops.length > 0);
 
+  const openDirectionsTo = (stop: StopSearchResult) => {
+    setDirTo({ ...stop });
+    setTab("directions");
+    setSheetSnap("half");
+  };
+
+  const exitDirections = () => {
+    setDirectionsResults(null);
+    setActiveMode(null);
+    setEndpoints(null);
+  };
+
+  /** Sheet/panel content (rendered in both the mobile sheet and desktop panel). */
+  const sheetContent = (
+    <div className="flex flex-col gap-3">
+      {/* Header: brand + tabs */}
+      <div className="flex items-center gap-2">
+        <div className="min-w-0">
+          <div className="font-mono text-md font-semibold tracking-widest text-[#15803D]">
+            MENGED
+          </div>
+        </div>
+        <div className="ml-auto flex shrink-0 rounded-full bg-[#F1F3F4] p-0.5">
+          {(["explore", "directions"] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => {
+                setTab(t);
+                if (t === "explore") exitDirections();
+              }}
+              className={cx(
+                "cursor-pointer rounded-full px-3.5 py-1.5 text-[12px] font-semibold capitalize",
+                tab === t
+                  ? "bg-white text-[#1A73E8] shadow-sm"
+                  : "text-[#5F6368]",
+              )}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {tab === "explore" ? (
+        <div className="flex flex-col gap-2.5">
+          {/* Search (desktop panel; mobile uses the floating pill) */}
+          <div className="relative max-sm:hidden">
+            <SearchLg className="pointer-events-none absolute top-1/2 left-3.5 size-4.5 -translate-y-1/2 text-[#5F6368]" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search routes and stops"
+              className="w-full rounded-full bg-[#F1F3F4] py-2.5 pr-4 pl-10 text-[14px] text-[#202124] placeholder:text-[#5F6368] focus:bg-white focus:outline-2 focus:outline-[#1A73E8]"
+            />
+          </div>
+
+          {hasSearchResults && !detail && !selectedStop && (
+            <div className="flex flex-col gap-0.5">
+              {results.routes.length > 0 && (
+                <div className="mt-1 text-[10.5px] font-semibold tracking-wide text-[#5F6368] uppercase">
+                  Routes
+                </div>
+              )}
+              {results.routes.map((route) => (
+                <button
+                  key={route.id}
+                  onClick={() => selectRoute(route.id)}
+                  onMouseEnter={() => previewRoute(route.id)}
+                  onMouseLeave={() => previewRoute(null)}
+                  className="flex cursor-pointer items-center gap-2.5 rounded-xl px-2 py-2 text-left hover:bg-[#F8F9FA]"
+                >
+                  <RouteChip
+                    shortName={route.shortName}
+                    operatorCode={route.operatorCode}
+                    size="sm"
+                  />
+                  <span className="min-w-0 truncate text-[13px] text-[#202124]">
+                    {route.longName}
+                  </span>
+                </button>
+              ))}
+              {results.stops.length > 0 && (
+                <div className="mt-1 text-[10.5px] font-semibold tracking-wide text-[#5F6368] uppercase">
+                  Stops
+                </div>
+              )}
+              {results.stops.map((stop) => (
+                <button
+                  key={stop.id}
+                  onClick={() => selectStop(stop)}
+                  className="flex cursor-pointer items-center gap-2.5 rounded-xl px-2 py-2 text-left hover:bg-[#F8F9FA]"
+                >
+                  <span className="size-2.5 shrink-0 rounded-full border-[3px] border-[#1A73E8] bg-white" />
+                  <span className="min-w-0 truncate text-[13px] text-[#202124]">
+                    {stop.name}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {query.trim().length >= 2 && !hasSearchResults && (
+            <div className="py-2 text-center text-[13px] text-[#80868B]">
+              No routes or stops found.
+            </div>
+          )}
+
+          {/* Selected stop card */}
+          {selectedStop && !detail && (
+            <div className="rounded-2xl bg-[#F8F9FA] p-3.5">
+              <div className="flex items-center gap-2.5">
+                <span className="size-3 shrink-0 rounded-full border-[3px] border-[#1A73E8] bg-white" />
+                <div className="min-w-0 flex-1 text-[14px] font-semibold text-[#202124]">
+                  {selectedStop.name}
+                </div>
+              </div>
+              <button
+                onClick={() => openDirectionsTo(selectedStop)}
+                className="mt-3 w-full cursor-pointer rounded-full bg-[#1A73E8] py-2 text-[13px] font-semibold text-white hover:bg-[#1765CC]"
+              >
+                Directions to here
+              </button>
+            </div>
+          )}
+
+          {detail && (
+            <RouteSheet
+              detail={detail}
+              onClose={() => setSelectedRouteId(null)}
+            />
+          )}
+
+          {query.trim().length < 2 && !selectedStop && !detail && (
+            <div className="flex flex-wrap gap-x-3.5 gap-y-1.5 pt-0.5">
+              {Object.values(OPERATOR_META).map((meta) => (
+                <span
+                  key={meta.code}
+                  className={cx(
+                    "flex items-center gap-1.5 text-[11.5px] font-medium",
+                    hiddenOperators.includes(meta.code)
+                      ? "text-[#BDC1C6] line-through"
+                      : "text-[#5F6368]",
+                  )}
+                >
+                  <span
+                    className="h-1 w-4 rounded-sm"
+                    style={{ background: meta.color }}
+                  />
+                  {meta.short}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+        <DirectionsPanel
+          from={dirFrom}
+          to={dirTo}
+          setFrom={setDirFrom}
+          setTo={setDirTo}
+          results={directionsResults}
+          activeMode={activeMode}
+          onActiveMode={setActiveMode}
+          onResults={setDirectionsResults}
+          onEndpoints={setEndpoints}
+        />
+      )}
+    </div>
+  );
+
   return (
-    <div className="relative h-screen w-full">
+    <div className="fixed inset-0 h-dvh w-full overflow-hidden">
       <MapGl
         ref={mapRef}
         initialViewState={{ ...ADDIS_CENTER, zoom: 11.5 }}
@@ -332,8 +600,8 @@ export function PublicMap({ user }: PublicMapProps) {
               paint={{
                 "line-color": ROUTE_LINE_COLOR,
                 "line-width": ROUTE_LINE_WIDTH,
-                "line-opacity":
-                  hoveredRouteId || detail || itinerary ? 0.22 : 0.65,
+                "line-opacity": routeOpacity,
+                "line-opacity-transition": { duration: 350, delay: 0 },
               }}
             />
             {hoveredRouteId ? (
@@ -372,7 +640,7 @@ export function PublicMap({ user }: PublicMapProps) {
           visible={showHubStops}
         />
 
-        {detailGeojson && (
+        {detailGeojson && !hasDirections && (
           <Source id="selected-route" type="geojson" data={detailGeojson}>
             <Layer
               id="selected-route-casing"
@@ -398,7 +666,6 @@ export function PublicMap({ user }: PublicMapProps) {
           </Source>
         )}
 
-        {/* Stop markers render after route lines so they sit on top. */}
         <StopMarkersLayer
           id="hover-stops"
           stops={hoverPreview?.stops ?? []}
@@ -414,40 +681,148 @@ export function PublicMap({ user }: PublicMapProps) {
           onLine
         />
 
-        {itineraryGeojson && (
-          <Source id="itinerary" type="geojson" data={itineraryGeojson}>
+        {/* Directions: dimmed alternatives below, active mode on top. */}
+        {itinerariesGeojson && hasDirections && (
+          <Source id="itineraries" type="geojson" data={itinerariesGeojson}>
             <Layer
-              id="itinerary-casing"
+              id="itin-inactive"
               type="line"
+              filter={inactiveFilter}
               layout={{ "line-cap": "round", "line-join": "round" }}
-              paint={{ "line-color": "#FFFFFF", "line-width": 9 }}
+              paint={{
+                "line-color": ["get", "colorDim"],
+                "line-width": 4,
+                "line-opacity": 0.75,
+              }}
             />
             <Layer
-              id="itinerary-line"
+              id="itin-active-casing"
               type="line"
+              filter={activeFilter}
+              layout={{ "line-cap": "round", "line-join": "round" }}
+              paint={{ "line-color": "#FFFFFF", "line-width": 10 }}
+            />
+            <Layer
+              id="itin-active"
+              type="line"
+              filter={activeFilter}
               layout={{ "line-cap": "round", "line-join": "round" }}
               paint={{
                 "line-color": ["get", "color"],
-                "line-width": 5,
+                "line-width": 5.5,
+                ...(activeMode ? {} : {}),
+              }}
+            />
+            {/* Walk segments of the active route drawn dotted. */}
+            <Layer
+              id="itin-active-walk"
+              type="line"
+              filter={["all", activeFilter, ["==", ["get", "walk"], true]]}
+              layout={{ "line-cap": "round", "line-join": "round" }}
+              paint={{
+                "line-color": "#FFFFFF",
+                "line-width": 2,
+                "line-dasharray": [0.1, 1.6],
               }}
             />
           </Source>
         )}
 
-        {marker && (
-          <Marker longitude={marker.lon} latitude={marker.lat} anchor="bottom">
-            <div className="flex flex-col items-center">
-              <div className="rounded-md bg-[#152018] px-2 py-1 text-[11px] font-semibold text-white shadow-md">
-                {marker.name}
-              </div>
-              <div className="size-3 rounded-full border-[3px] border-[#152018] bg-white shadow" />
-            </div>
-          </Marker>
+        {/* Endpoint markers — the blue dot system. */}
+        {endpoints && hasDirections && (
+          <>
+            <BlueDotMarker
+              longitude={endpoints.from.lon}
+              latitude={endpoints.from.lat}
+              label={endpoints.from.name}
+              pulse
+              onClick={() =>
+                mapRef.current?.flyTo({
+                  center: [endpoints.from.lon, endpoints.from.lat],
+                  zoom: 15,
+                  duration: 600,
+                })
+              }
+            />
+            <BlueDotMarker
+              longitude={endpoints.to.lon}
+              latitude={endpoints.to.lat}
+              label={endpoints.to.name}
+              color="#D93025"
+              onClick={() =>
+                mapRef.current?.flyTo({
+                  center: [endpoints.to.lon, endpoints.to.lat],
+                  zoom: 15,
+                  duration: 600,
+                })
+              }
+            />
+          </>
+        )}
+
+        {selectedStop && !hasDirections && (
+          <BlueDotMarker
+            key={stopBounceKey}
+            longitude={selectedStop.lon}
+            latitude={selectedStop.lat}
+            label={selectedStop.name}
+            bounce
+            onClick={() => selectStop(selectedStop)}
+          />
+        )}
+
+        {myLocation && (
+          <BlueDotMarker
+            longitude={myLocation.lon}
+            latitude={myLocation.lat}
+            label="Your location"
+            pulse
+          />
         )}
       </MapGl>
 
-      {/* Top-right: auth */}
-      <div className="absolute top-4 right-4">
+      {/* Mobile: floating top search pill + auth avatar */}
+      <div className="absolute inset-x-3 top-3 z-20 flex items-center gap-2 sm:hidden">
+        <div className="relative flex-1">
+          <SearchLg className="pointer-events-none absolute top-1/2 left-4 size-4.5 -translate-y-1/2 text-[#5F6368]" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onFocus={() => {
+              setTab("explore");
+              setSheetSnap("half");
+            }}
+            placeholder="Search Addis transit"
+            className="h-12 w-full rounded-full bg-white pr-4 pl-11 text-[15px] text-[#202124] shadow-[0_1px_6px_rgba(0,0,0,0.25)] placeholder:text-[#5F6368] focus:outline-none"
+          />
+        </div>
+        {user ? (
+          user.hasConsoleAccess ? (
+            <Link
+              href="/console"
+              aria-label="Open console"
+              className="flex size-12 shrink-0 items-center justify-center rounded-full bg-[#152018] text-[13px] font-bold text-white shadow-[0_1px_6px_rgba(0,0,0,0.25)]"
+            >
+              {user.name.charAt(0).toUpperCase()}
+            </Link>
+          ) : (
+            <span className="flex size-12 shrink-0 items-center justify-center rounded-full bg-white text-[13px] font-bold text-[#1A73E8] shadow-[0_1px_6px_rgba(0,0,0,0.25)]">
+              {user.name.charAt(0).toUpperCase()}
+            </span>
+          )
+        ) : (
+          <Link
+            href="/sign-in"
+            aria-label="Sign in"
+            className="flex h-12 shrink-0 items-center rounded-full bg-white px-4 text-[13px] font-semibold text-[#1A73E8] shadow-[0_1px_6px_rgba(0,0,0,0.25)]"
+          >
+            Sign in
+          </Link>
+        )}
+      </div>
+
+      {/* Desktop: auth pill */}
+      <div className="absolute top-4 right-4 z-20 max-sm:hidden">
         {user ? (
           user.hasConsoleAccess ? (
             <Link
@@ -471,135 +846,9 @@ export function PublicMap({ user }: PublicMapProps) {
         )}
       </div>
 
-      {/* Floating panel */}
-      <div className="pointer-events-none absolute top-4 left-4 flex max-h-[calc(100vh-2rem)] w-90 flex-col gap-3 max-sm:right-4 max-sm:w-auto">
-        <div className="pointer-events-auto overflow-hidden rounded-2xl bg-white shadow-xl ring-1 ring-black/5">
-          <div className="flex items-center gap-2.5 border-b border-[#EEF1EA] px-4 pt-3.5 pb-3">
-            <div>
-              <div className="font-mono text-[11px] font-semibold tracking-widest text-[#15803D]">
-                MENGED
-              </div>
-              <div className="text-[15px] leading-tight font-bold text-[#1C2321]">
-                Addis Ababa Transit
-              </div>
-            </div>
-            <div className="ml-auto flex rounded-lg bg-[#F4F5F2] p-0.5">
-              {(["explore", "directions"] as const).map((t) => (
-                <button
-                  key={t}
-                  onClick={() => setTab(t)}
-                  className={cx(
-                    "cursor-pointer rounded-md px-3 py-1.5 text-xs font-semibold capitalize",
-                    tab === t
-                      ? "bg-white text-[#1C2321] shadow-sm"
-                      : "text-[#5C6B5E]",
-                  )}
-                >
-                  {t}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="max-h-[38vh] overflow-y-auto p-4">
-            {tab === "explore" ? (
-              <div className="flex flex-col gap-2.5">
-                <div className="relative">
-                  <SearchLg className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-[#9AA69C]" />
-                  <input
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    placeholder="Search routes and stops…"
-                    className="w-full rounded-lg border border-[#D6DCD0] bg-white py-2 pr-3 pl-9 text-[13.5px] text-[#1C2321] focus:outline-2 focus:outline-[#15803D33]"
-                  />
-                </div>
-
-                {hasSearchResults && (
-                  <div className="flex flex-col gap-1">
-                    {results.routes.length > 0 && (
-                      <div className="mt-1 text-[10.5px] font-semibold tracking-wide text-[#5C6B5E] uppercase">
-                        Routes
-                      </div>
-                    )}
-                    {results.routes.map((route) => (
-                      <button
-                        key={route.id}
-                        onClick={() => selectRoute(route.id)}
-                        onMouseEnter={() => previewRoute(route.id)}
-                        onMouseLeave={() => previewRoute(null)}
-                        className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-[#F4F5F2]"
-                      >
-                        <RouteChip
-                          shortName={route.shortName}
-                          operatorCode={route.operatorCode}
-                          size="sm"
-                        />
-                        <span className="min-w-0 truncate text-[12.5px] text-[#1C2321]">
-                          {route.longName}
-                        </span>
-                      </button>
-                    ))}
-                    {results.stops.length > 0 && (
-                      <div className="mt-1 text-[10.5px] font-semibold tracking-wide text-[#5C6B5E] uppercase">
-                        Stops
-                      </div>
-                    )}
-                    {results.stops.map((stop) => (
-                      <button
-                        key={stop.id}
-                        onClick={() => selectStop(stop)}
-                        className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-[#F4F5F2]"
-                      >
-                        <span className="size-2 shrink-0 rounded-full border-2 border-[#7E9182] bg-white" />
-                        <span className="min-w-0 truncate text-[12.5px] text-[#1C2321]">
-                          {stop.name}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-
-                {query.trim().length >= 2 && !hasSearchResults && (
-                  <div className="py-2 text-center text-[12.5px] text-[#7E9182]">
-                    No routes or stops found.
-                  </div>
-                )}
-
-                {query.trim().length < 2 && (
-                  <div className="flex flex-col gap-2 pt-1">
-                    <div className="flex flex-wrap gap-3">
-                      {Object.values(OPERATOR_META).map((meta) => (
-                        <span
-                          key={meta.code}
-                          className="flex items-center gap-1.5 text-[11.5px] font-medium text-[#5C6B5E]"
-                        >
-                          <span
-                            className="h-1 w-4 rounded-sm"
-                            style={{ background: meta.color }}
-                          />
-                          {meta.short}
-                        </span>
-                      ))}
-                    </div>
-                    {hubStops.length > 0 && (
-                      <p className="text-[11px] leading-snug text-[#7E9182]">
-                        Green dots mark major destinations — hover any route
-                        line to preview its stops.
-                      </p>
-                    )}
-                  </div>
-                )}
-              </div>
-            ) : (
-              <JourneyPlanner onItinerary={onItinerary} />
-            )}
-          </div>
-        </div>
-
-        {detail && (
-          <RouteSheet detail={detail} onClose={() => setSelectedRouteId(null)} />
-        )}
-      </div>
+      <FloatingControls onLocate={onLocate} />
+      <LayersPanel />
+      <BottomSheet>{sheetContent}</BottomSheet>
     </div>
   );
 }

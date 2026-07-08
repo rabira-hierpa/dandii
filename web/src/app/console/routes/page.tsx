@@ -104,7 +104,62 @@ export default async function RouteAssignmentPage({
       />
       <RouteFilters resultCount={total} />
 
-      <div className="overflow-x-auto rounded-xl border border-[#E2E6DE] bg-white">
+      {/* Mobile: card list */}
+      <div className="flex flex-col gap-2.5 md:hidden">
+        {routes.map((route) => {
+          const operatorCode =
+            (route.assignment?.operator.code as OperatorCode | undefined) ??
+            null;
+          const closed = closedIds.has(route.id);
+          return (
+            <div
+              key={route.id}
+              className="flex flex-col gap-2.5 rounded-xl border border-[#E2E6DE] bg-white p-3.5"
+            >
+              <div className="flex items-center gap-2">
+                <RouteChip
+                  shortName={route.shortName}
+                  operatorCode={operatorCode}
+                />
+                {closed && (
+                  <span className="rounded-full bg-[#FEE2E2] px-1.5 py-0.5 text-[10.5px] font-bold whitespace-nowrap text-[#991B1B]">
+                    CLOSED
+                  </span>
+                )}
+                <span className="ml-auto text-[11.5px] text-[#7E9182]">
+                  {typeLabel(route.type, operatorCode)}
+                  {route.lengthMeters
+                    ? ` · ${(route.lengthMeters / 1000).toFixed(1)} km`
+                    : ""}
+                </span>
+              </div>
+              <div className="text-[13.5px] leading-snug font-medium text-[#1C2321]">
+                {route.longName}
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[12px] whitespace-nowrap text-[#5C6B5E]">
+                  {summarizeFare(route.fare)?.label ?? "No fare set"}
+                </span>
+                <AssignSelect
+                  routeId={route.id}
+                  shortName={route.shortName}
+                  operatorId={route.assignment?.operatorId ?? null}
+                  operators={operators}
+                  disabled={!canAssign}
+                />
+              </div>
+            </div>
+          );
+        })}
+        {routes.length === 0 && (
+          <div className="rounded-xl border border-[#E2E6DE] bg-white p-8 text-center text-[13.5px] text-[#5C6B5E]">
+            No routes match your search.
+          </div>
+        )}
+      </div>
+
+      {/* Desktop: table */}
+      <div className="overflow-x-auto rounded-xl border border-[#E2E6DE] bg-white max-md:hidden">
         <div className="grid min-w-225 grid-cols-[100px_1.7fr_86px_64px_150px_190px] items-center gap-3 border-b border-[#E2E6DE] bg-[#F8FAF6] px-5 py-2.5 text-[11.5px] font-semibold tracking-wide text-[#5C6B5E] uppercase">
           <span>Route</span>
           <span>Corridor</span>

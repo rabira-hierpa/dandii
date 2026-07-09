@@ -7,7 +7,7 @@ import { adminAc, defaultStatements } from "better-auth/plugins/admin/access";
  */
 export const statement = {
   ...defaultStatements,
-  route: ["read", "assign"],
+  route: ["read", "assign", "create", "update", "delete"],
   fare: ["read", "create", "update", "delete"],
   // Maintainers may only create closures with reason MAINTENANCE/OTHER —
   // that narrowing is enforced in the closure server actions.
@@ -19,7 +19,7 @@ export const ac = createAccessControl(statement);
 
 export const superAdminRole = ac.newRole({
   ...adminAc.statements,
-  route: ["read", "assign"],
+  route: ["read", "assign", "create", "update", "delete"],
   fare: ["read", "create", "update", "delete"],
   closure: ["read", "create", "update", "delete"],
   system: ["settings"],
@@ -29,14 +29,15 @@ export const adminRole = ac.newRole({
   // Can manage users below admin (enforced in user actions), but not impersonate.
   user: ["create", "list", "set-role", "ban", "delete", "set-password"],
   session: ["list", "revoke", "delete"],
-  route: ["read", "assign"],
+  route: ["read", "assign", "create", "update", "delete"],
   fare: ["read", "create", "update", "delete"],
   closure: ["read", "create", "update", "delete"],
   system: ["settings"],
 });
 
 export const routeOperatorRole = ac.newRole({
-  route: ["read", "assign"],
+  // May create and edit routes, but deleting them needs admin or above.
+  route: ["read", "assign", "create", "update"],
   fare: ["read", "create", "update", "delete"],
   closure: ["read", "create", "update", "delete"],
 });

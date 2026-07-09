@@ -167,9 +167,30 @@ export function PublicMap({ user }: PublicMapProps) {
   const [dirFrom, setDirFrom] = useState<DirectionsEndpoint | null>(null);
   const [dirTo, setDirTo] = useState<DirectionsEndpoint | null>(null);
 
-  const effectiveHoverId =
-    hoveredRouteId && hoveredRouteId !== selectedRouteId
+  // A hover is only effective while its operator layer is toggled on — this
+  // also neutralizes a stale hover when its layer gets hidden mid-hover.
+  const operatorByRouteId = useMemo(() => {
+    const map = new Map<string, string | null>();
+    for (const feature of geojson?.features ?? []) {
+      map.set(
+        feature.properties?.routeId as string,
+        (feature.properties?.operatorCode as string | null) ?? null,
+      );
+    }
+    return map;
+  }, [geojson]);
+  const hoveredOperator = hoveredRouteId
+    ? operatorByRouteId.get(hoveredRouteId)
+    : null;
+  const visibleHoveredRouteId =
+    hoveredRouteId &&
+    !hiddenOperators.includes(hoveredOperator as (typeof hiddenOperators)[number])
       ? hoveredRouteId
+      : null;
+
+  const effectiveHoverId =
+    visibleHoveredRouteId && visibleHoveredRouteId !== selectedRouteId
+      ? visibleHoveredRouteId
       : null;
   const hoverPreview =
     effectiveHoverId == null
@@ -351,17 +372,6 @@ export function PublicMap({ user }: PublicMapProps) {
     [hoveredRouteId, hasDirections, hiddenOperators, previewRoute, selectedRouteId],
   );
 
-  // Drop an active hover if its layer gets toggled off mid-hover.
-  useEffect(() => {
-    if (!hoveredRouteId) return;
-    const operatorCode = geojson?.features.find(
-      (f) => f.properties?.routeId === hoveredRouteId,
-    )?.properties?.operatorCode as (typeof hiddenOperators)[number] | undefined;
-    if (operatorCode && hiddenOperators.includes(operatorCode)) {
-      setHoveredRouteId(null);
-    }
-  }, [hiddenOperators, hoveredRouteId, geojson]);
-
   const onMapMouseLeave = useCallback(() => {
     const canvas = mapRef.current?.getCanvas();
     if (canvas) canvas.style.cursor = "";
@@ -377,8 +387,8 @@ export function PublicMap({ user }: PublicMapProps) {
     });
   };
 
-  const hoverFilter: FilterSpecification = hoveredRouteId
-    ? ["==", ["get", "routeId"], hoveredRouteId]
+  const hoverFilter: FilterSpecification = visibleHoveredRouteId
+    ? ["==", ["get", "routeId"], visibleHoveredRouteId]
     : ["==", ["get", "routeId"], ""];
 
   const visibleCodes = useMemo(
@@ -389,7 +399,7 @@ export function PublicMap({ user }: PublicMapProps) {
     [hiddenOperators],
   );
 
-  const overlayActive = Boolean(hoveredRouteId || detail || hasDirections);
+  const overlayActive = Boolean(visibleHoveredRouteId || detail || hasDirections);
 
   /** Fade lines of hidden operators instead of hard filtering. */
   const routeOpacity = useMemo(
@@ -408,9 +418,9 @@ export function PublicMap({ user }: PublicMapProps) {
   );
 
   const showHubStops =
-    tab === "explore" && !selectedRouteId && !hasDirections && !hoveredRouteId;
+    tab === "explore" && !selectedRouteId && !hasDirections && !visibleHoveredRouteId;
   const showHoverStops = Boolean(
-    hoveredRouteId && hoverPreview?.stops.length && !selectedRouteId,
+    visibleHoveredRouteId && hoverPreview?.stops.length && !selectedRouteId,
   );
   const showSelectedStops = Boolean(
     selectedRouteId && detail?.stops.length && !hasDirections,
@@ -673,7 +683,7 @@ export function PublicMap({ user }: PublicMapProps) {
                 "line-opacity-transition": { duration: 350, delay: 0 },
               }}
             />
-            {hoveredRouteId ? (
+            {visibleHoveredRouteId ? (
               <Layer
                 id="routes-hover-casing"
                 type="line"
@@ -686,7 +696,7 @@ export function PublicMap({ user }: PublicMapProps) {
                 }}
               />
             ) : null}
-            {hoveredRouteId ? (
+            {visibleHoveredRouteId ? (
               <Layer
                 id="routes-hover-line"
                 type="line"

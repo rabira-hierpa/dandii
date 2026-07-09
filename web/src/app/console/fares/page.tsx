@@ -6,7 +6,8 @@ import { CONSOLE_ROLES } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/session";
 import { RouteFilters } from "../routes/filters";
-import { FareRow, type FareRowData } from "./fare-row";
+import type { FareRowData } from "./fare-row";
+import { FaresList } from "./fares-list";
 
 export const dynamic = "force-dynamic";
 
@@ -125,16 +126,7 @@ export default async function FareManagementPage({
       />
       <RouteFilters resultCount={total} />
 
-      <div className="flex flex-col gap-3">
-        {rows.map((row) => (
-          <FareRow key={row.routeId} data={row} readOnly={readOnly} />
-        ))}
-        {rows.length === 0 && (
-          <div className="rounded-xl border border-[#E2E6DE] bg-white p-8 text-center text-[13.5px] text-[#5C6B5E]">
-            No routes match your search.
-          </div>
-        )}
-      </div>
+      <FaresList rows={rows} readOnly={readOnly} />
 
       {totalPages > 1 && (
         <div className="mt-4 flex items-center justify-between text-[13px] text-[#5C6B5E]">

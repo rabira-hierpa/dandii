@@ -1,24 +1,17 @@
 import Link from "next/link";
 import { ConsolePageHeader } from "@/components/console/page-header";
-import { RouteChip } from "@/components/console/route-chip";
 import type { OperatorCode } from "@/lib/operators";
 import { OPERATOR_CODES } from "@/lib/operators";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/session";
 import { CONSOLE_ROLES } from "@/lib/permissions";
 import { getClosedRouteIds, summarizeFare } from "@/lib/transit";
-import { AssignSelect } from "./assign-select";
 import { RouteFilters } from "./filters";
+import { RoutesTable, type RouteRow } from "./routes-table";
 
 export const dynamic = "force-dynamic";
 
 const PAGE_SIZE = 50;
-
-function typeLabel(routeType: number, operatorCode: OperatorCode | null) {
-  if (routeType === 0) return "LRT";
-  if (operatorCode === "MINIBUS") return "Minibus";
-  return "Fixed bus";
-}
 
 export default async function RouteAssignmentPage({
   searchParams,
@@ -27,6 +20,8 @@ export default async function RouteAssignmentPage({
 }) {
   const { role } = await requireRole(CONSOLE_ROLES);
   const canAssign = role !== "maintainer";
+  const canEdit = role !== "maintainer";
+  const canDelete = role === "super-admin" || role === "admin";
 
   const params = await searchParams;
   const q = params.q?.trim() ?? "";
@@ -96,6 +91,19 @@ export default async function RouteAssignmentPage({
     return `/console/routes${qs ? `?${qs}` : ""}`;
   };
 
+  const rows: RouteRow[] = routes.map((route) => ({
+    id: route.id,
+    shortName: route.shortName,
+    longName: route.longName,
+    type: route.type,
+    lengthKm: route.lengthMeters != null ? route.lengthMeters / 1000 : null,
+    fareLabel: summarizeFare(route.fare)?.label ?? null,
+    operatorId: route.assignment?.operatorId ?? null,
+    operatorCode:
+      (route.assignment?.operator.code as OperatorCode | undefined) ?? null,
+    closed: closedIds.has(route.id),
+  }));
+
   return (
     <>
       <ConsolePageHeader
@@ -118,120 +126,13 @@ export default async function RouteAssignmentPage({
       />
       <RouteFilters resultCount={total} />
 
-      {/* Mobile: card list */}
-      <div className="flex flex-col gap-2.5 md:hidden">
-        {routes.map((route) => {
-          const operatorCode =
-            (route.assignment?.operator.code as OperatorCode | undefined) ??
-            null;
-          const closed = closedIds.has(route.id);
-          return (
-            <div
-              key={route.id}
-              className="flex flex-col gap-2.5 rounded-xl border border-[#E2E6DE] bg-white p-3.5"
-            >
-              <div className="flex items-center gap-2">
-                <RouteChip
-                  shortName={route.shortName}
-                  operatorCode={operatorCode}
-                />
-                {closed && (
-                  <span className="rounded-full bg-[#FEE2E2] px-1.5 py-0.5 text-[10.5px] font-bold whitespace-nowrap text-[#991B1B]">
-                    CLOSED
-                  </span>
-                )}
-                <span className="ml-auto text-[11.5px] text-[#7E9182]">
-                  {typeLabel(route.type, operatorCode)}
-                  {route.lengthMeters
-                    ? ` · ${(route.lengthMeters / 1000).toFixed(1)} km`
-                    : ""}
-                </span>
-              </div>
-              <div className="text-[13.5px] leading-snug font-medium text-[#1C2321]">
-                {route.longName}
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-[12px] whitespace-nowrap text-[#5C6B5E]">
-                  {summarizeFare(route.fare)?.label ?? "No fare set"}
-                </span>
-                <AssignSelect
-                  routeId={route.id}
-                  shortName={route.shortName}
-                  operatorId={route.assignment?.operatorId ?? null}
-                  operators={operators}
-                  disabled={!canAssign}
-                />
-              </div>
-            </div>
-          );
-        })}
-        {routes.length === 0 && (
-          <div className="rounded-xl border border-[#E2E6DE] bg-white p-8 text-center text-[13.5px] text-[#5C6B5E]">
-            No routes match your search.
-          </div>
-        )}
-      </div>
-
-      {/* Desktop: table */}
-      <div className="overflow-x-auto rounded-xl border border-[#E2E6DE] bg-white max-md:hidden">
-        <div className="grid min-w-225 grid-cols-[100px_1.7fr_86px_64px_150px_190px] items-center gap-3 border-b border-[#E2E6DE] bg-[#F8FAF6] px-5 py-2.5 text-[11.5px] font-semibold tracking-wide text-[#5C6B5E] uppercase">
-          <span>Route</span>
-          <span>Corridor</span>
-          <span>Type</span>
-          <span>Km</span>
-          <span>Fare</span>
-          <span>Operating agency</span>
-        </div>
-        {routes.map((route) => {
-          const operatorCode =
-            (route.assignment?.operator.code as OperatorCode | undefined) ??
-            null;
-          const closed = closedIds.has(route.id);
-          return (
-            <div
-              key={route.id}
-              className="grid min-w-225 grid-cols-[100px_1.7fr_86px_64px_150px_190px] items-center gap-3 border-b border-[#EEF1EA] px-5 py-2.5 text-[13.5px] last:border-b-0"
-            >
-              <span className="justify-self-start">
-                <RouteChip shortName={route.shortName} operatorCode={operatorCode} />
-              </span>
-              <span className="flex min-w-0 items-center gap-2">
-                <span className="min-w-0 truncate font-medium text-[#1C2321]">
-                  {route.longName}
-                </span>
-                {closed && (
-                  <span className="rounded-full bg-[#FEE2E2] px-1.5 py-0.5 text-[10.5px] font-bold whitespace-nowrap text-[#991B1B]">
-                    CLOSED
-                  </span>
-                )}
-              </span>
-              <span className="text-[12.5px] text-[#5C6B5E]">
-                {typeLabel(route.type, operatorCode)}
-              </span>
-              <span className="text-[#5C6B5E] tabular-nums">
-                {route.lengthMeters
-                  ? (route.lengthMeters / 1000).toFixed(1)
-                  : "—"}
-              </span>
-              <span className="text-[12.5px] text-[#5C6B5E]">
-                {summarizeFare(route.fare)?.label ?? "—"}
-              </span>
-              <AssignSelect
-                routeId={route.id}
-                shortName={route.shortName}
-                operatorId={route.assignment?.operatorId ?? null}
-                operators={operators}
-                disabled={!canAssign}
-              />
-            </div>
-          );
-        })}
-        {routes.length === 0 && (
-          <div className="p-8 text-center text-[13.5px] text-[#5C6B5E]">
-            No routes match your search.
-          </div>
-        )}
-      </div>
+      <RoutesTable
+        rows={rows}
+        operators={operators}
+        canAssign={canAssign}
+        canEdit={canEdit}
+        canDelete={canDelete}
+      />
 
       {totalPages > 1 && (
         <div className="mt-4 flex items-center justify-between text-[13px] text-[#5C6B5E]">

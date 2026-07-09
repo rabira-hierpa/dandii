@@ -101,6 +101,20 @@ export default async function RouteAssignmentPage({
       <ConsolePageHeader
         title="Route Assignment"
         subtitle="Map route_ids to operating agencies · changes apply across the console"
+        action={
+          <a
+            href={`/api/export/routes.csv${(() => {
+              const sp = new URLSearchParams();
+              if (q) sp.set("q", q);
+              if (operatorFilter) sp.set("operator", operatorFilter);
+              const qs = sp.toString();
+              return qs ? `?${qs}` : "";
+            })()}`}
+            className="shrink-0 rounded-lg border border-[#D6DCD0] bg-white px-3.5 py-2 text-[12.5px] font-semibold whitespace-nowrap text-[#3D4A3F] hover:bg-[#F4F5F2]"
+          >
+            Export CSV
+          </a>
+        }
       />
       <RouteFilters resultCount={total} />
 

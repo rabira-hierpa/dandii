@@ -29,7 +29,7 @@ export function ConsoleSidebar({ user, canManageSettings }: ConsoleSidebarProps)
   };
 
   return (
-    <aside className="sticky top-0 flex h-screen w-59 shrink-0 flex-col bg-[#152018] px-4 py-6 text-[#E8ECE6] max-sm:hidden">
+    <aside className="sticky top-0 flex h-screen w-59 shrink-0 flex-col bg-[#152018] px-4 py-6 text-[#E8ECE6] max-sm:hidden print:hidden">
       <div className="border-b border-[#2A3A2E] px-2 pb-6">
         <Link href="/" className="block">
           <div className="text-[15px] font-bold tracking-wide">

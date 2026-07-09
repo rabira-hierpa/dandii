@@ -114,6 +114,14 @@ export default async function FareManagementPage({
       <ConsolePageHeader
         title="Fare Management"
         subtitle="Flat and distance-based pricing in Ethiopian Birr (ETB)"
+        action={
+          <a
+            href="/api/export/fares.csv"
+            className="shrink-0 rounded-lg border border-[#D6DCD0] bg-white px-3.5 py-2 text-[12.5px] font-semibold whitespace-nowrap text-[#3D4A3F] hover:bg-[#F4F5F2]"
+          >
+            Export CSV
+          </a>
+        }
       />
       <RouteFilters resultCount={total} />
 

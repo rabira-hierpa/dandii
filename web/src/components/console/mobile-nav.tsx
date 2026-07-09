@@ -56,7 +56,7 @@ export function ConsoleMobileNav({
   };
 
   return (
-    <div className="sm:hidden">
+    <div className="sm:hidden print:hidden">
       {/* Top app bar */}
       <header className="fixed inset-x-0 top-0 z-40 flex items-center gap-3 bg-[#152018] px-4 py-3 text-[#E8ECE6]">
         <Link href="/console" className="min-w-0 flex-1">

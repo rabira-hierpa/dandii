@@ -73,12 +73,18 @@ export default async function AnalyticsPage() {
         title="Analytics"
         subtitle="Service supply, disruption, and fare structure across the network"
         action={
-          <div className="flex shrink-0 gap-2">
+          <div className="flex shrink-0 flex-wrap gap-2">
             <a
               href="/api/export/routes.csv"
               className="rounded-lg border border-[#D6DCD0] bg-white px-3.5 py-2 text-[12.5px] font-semibold whitespace-nowrap text-[#3D4A3F] hover:bg-[#F4F5F2]"
             >
-              Export CSV
+              Routes + fares CSV
+            </a>
+            <a
+              href="/api/export/closures.csv"
+              className="rounded-lg border border-[#D6DCD0] bg-white px-3.5 py-2 text-[12.5px] font-semibold whitespace-nowrap text-[#3D4A3F] hover:bg-[#F4F5F2]"
+            >
+              Closures CSV
             </a>
             <Link
               href="/console/analytics/report"

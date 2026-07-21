@@ -1,8 +1,14 @@
 "use client";
 
-import { X as CloseX } from "@untitledui/icons";
+import {
+  Bookmark,
+  BookmarkCheck,
+  X as CloseX,
+} from "@untitledui/icons";
 import { RouteChip } from "@/components/console/route-chip";
 import { CLOSURE_REASON_LABELS, type ClosureReasonValue } from "@/lib/operators";
+import { cx } from "@/utils/cx";
+import { FareProposalForm } from "./fare-proposal-form";
 import type { RouteDetail } from "./types";
 
 function formatHeadway(secs: number) {
@@ -13,9 +19,15 @@ function formatHeadway(secs: number) {
 export function RouteSheet({
   detail,
   onClose,
+  signedIn = false,
+  isSaved = false,
+  onToggleSave,
 }: {
   detail: RouteDetail;
   onClose: () => void;
+  signedIn?: boolean;
+  isSaved?: boolean;
+  onToggleSave?: () => void;
 }) {
   return (
     <div className="pointer-events-auto flex min-h-0 w-full flex-col overflow-hidden rounded-2xl bg-[#F8F9FA]">
@@ -35,6 +47,23 @@ export function RouteSheet({
               : ""}
           </div>
         </div>
+        {signedIn && onToggleSave && (
+          <button
+            onClick={onToggleSave}
+            aria-label={isSaved ? "Unsave route" : "Save route"}
+            aria-pressed={isSaved}
+            className={cx(
+              "cursor-pointer rounded-lg p-1 hover:bg-[#F4F5F2]",
+              isSaved ? "text-[#1A73E8]" : "text-[#9AA69C] hover:text-[#3D4A3F]",
+            )}
+          >
+            {isSaved ? (
+              <BookmarkCheck className="size-4.5" />
+            ) : (
+              <Bookmark className="size-4.5" />
+            )}
+          </button>
+        )}
         <button
           onClick={onClose}
           aria-label="Close route details"
@@ -80,6 +109,14 @@ export function RouteSheet({
             </div>
           </div>
         </div>
+
+        {/* Rider fare-correction entry (D3) */}
+        <FareProposalForm
+          routeId={detail.id}
+          shortName={detail.shortName}
+          fare={detail.fare}
+          signedIn={signedIn}
+        />
 
         {detail.fare?.kind === "TIERED" && detail.fare.tiers.length > 0 && (
           <div>

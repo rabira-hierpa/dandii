@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import MapGl, {
   Layer,
   Source,
@@ -11,14 +12,18 @@ import MapGl, {
 import type { FilterSpecification } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { SearchLg } from "@untitledui/icons";
+import { toggleSavedRoute } from "@/actions/saved-routes";
 import { RouteChip } from "@/components/console/route-chip";
+import type { AccountData } from "@/lib/account";
 import {
   CLOSED_ROUTE_COLOR,
   OPERATOR_CODES,
   OPERATOR_META,
 } from "@/lib/operators";
+import { recordSearch } from "@/lib/recent-searches";
 import { useMapStore } from "@/stores/map-store";
 import { cx } from "@/utils/cx";
+import { AccountDrawer } from "./account-drawer";
 import { BottomSheet } from "./bottom-sheet";
 import { DirectionsPanel, type DirectionsEndpoint } from "./directions-panel";
 import { FloatingControls } from "./floating-controls";
@@ -117,13 +122,26 @@ function StopCard({
 }
 
 interface PublicMapProps {
-  user: { name: string; hasConsoleAccess: boolean } | null;
+  user: { name: string; email: string; hasConsoleAccess: boolean } | null;
+  account: AccountData | null;
 }
 
-export function PublicMap({ user }: PublicMapProps) {
+export function PublicMap({ user, account }: PublicMapProps) {
+  const router = useRouter();
   const mapRef = useRef<MapRef>(null);
   const { selectedRouteId, setSelectedRouteId, hiddenOperators, setSheetSnap } =
     useMapStore();
+
+  // Optimistic saved-route ids (server data + local toggles). Re-sync from the
+  // server prop across router.refresh() cycles via render-time comparison.
+  const [savedRouteIds, setSavedRouteIds] = useState<Set<string>>(
+    () => new Set(account?.savedRoutes.map((r) => r.routeId) ?? []),
+  );
+  const [prevAccount, setPrevAccount] = useState(account);
+  if (account !== prevAccount) {
+    setPrevAccount(account);
+    setSavedRouteIds(new Set(account?.savedRoutes.map((r) => r.routeId) ?? []));
+  }
 
   const [geojson, setGeojson] = useState<GeoJSON.FeatureCollection | null>(
     null,
@@ -184,7 +202,9 @@ export function PublicMap({ user }: PublicMapProps) {
     : null;
   const visibleHoveredRouteId =
     hoveredRouteId &&
-    !hiddenOperators.includes(hoveredOperator as (typeof hiddenOperators)[number])
+    !hiddenOperators.includes(
+      hoveredOperator as (typeof hiddenOperators)[number],
+    )
       ? hoveredRouteId
       : null;
 
@@ -312,6 +332,7 @@ export function PublicMap({ user }: PublicMapProps) {
   }, [directionsResults, activeMode]);
 
   const selectRoute = (routeId: string) => {
+    if (query.trim().length >= 2) recordSearch(query);
     setSelectedStop(null);
     setHoveredRouteId(null);
     setSelectedRouteId(routeId);
@@ -319,6 +340,7 @@ export function PublicMap({ user }: PublicMapProps) {
   };
 
   const selectStop = (stop: StopSearchResult) => {
+    if (query.trim().length >= 2) recordSearch(query);
     setSelectedRouteId(null);
     setSelectedStop(stop);
     setStopBounceKey((k) => k + 1);
@@ -329,6 +351,39 @@ export function PublicMap({ user }: PublicMapProps) {
       duration: 800,
     });
   };
+
+  // Save/unsave the selected route (optimistic; server confirms via refresh).
+  const onToggleSave = (routeId: string) => {
+    setSavedRouteIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(routeId)) next.delete(routeId);
+      else next.add(routeId);
+      return next;
+    });
+    void toggleSavedRoute({ routeId }).then((res) => {
+      if (!res.ok) {
+        // Roll back on failure.
+        setSavedRouteIds(
+          new Set(account?.savedRoutes.map((r) => r.routeId) ?? []),
+        );
+      } else {
+        router.refresh();
+      }
+    });
+  };
+
+  // Share deep-link: open the route named by ?route=<id> on first load.
+  const deepLinkedRef = useRef(false);
+  useEffect(() => {
+    if (deepLinkedRef.current) return;
+    if (typeof window === "undefined") return;
+    const routeId = new URLSearchParams(window.location.search).get("route");
+    if (routeId) {
+      deepLinkedRef.current = true;
+      setSelectedRouteId(routeId);
+      setSheetSnap("half");
+    }
+  }, [setSelectedRouteId, setSheetSnap]);
 
   /** Back navigation from a route/stop detail to the results (or map). */
   const clearSelection = () => {
@@ -369,7 +424,13 @@ export function PublicMap({ user }: PublicMapProps) {
       if (routeId && routeId !== hoveredRouteId) previewRoute(routeId);
       else if (!routeId && hoveredRouteId) previewRoute(null);
     },
-    [hoveredRouteId, hasDirections, hiddenOperators, previewRoute, selectedRouteId],
+    [
+      hoveredRouteId,
+      hasDirections,
+      hiddenOperators,
+      previewRoute,
+      selectedRouteId,
+    ],
   );
 
   const onMapMouseLeave = useCallback(() => {
@@ -399,7 +460,9 @@ export function PublicMap({ user }: PublicMapProps) {
     [hiddenOperators],
   );
 
-  const overlayActive = Boolean(visibleHoveredRouteId || detail || hasDirections);
+  const overlayActive = Boolean(
+    visibleHoveredRouteId || detail || hasDirections,
+  );
 
   /** Fade lines of hidden operators instead of hard filtering. */
   const routeOpacity = useMemo(
@@ -418,7 +481,10 @@ export function PublicMap({ user }: PublicMapProps) {
   );
 
   const showHubStops =
-    tab === "explore" && !selectedRouteId && !hasDirections && !visibleHoveredRouteId;
+    tab === "explore" &&
+    !selectedRouteId &&
+    !hasDirections &&
+    !visibleHoveredRouteId;
   const showHoverStops = Boolean(
     visibleHoveredRouteId && hoverPreview?.stops.length && !selectedRouteId,
   );
@@ -496,7 +562,8 @@ export function PublicMap({ user }: PublicMapProps) {
       {/* Header: brand + tabs */}
       <div className="flex items-center gap-2">
         <div className="min-w-0">
-          <div className="text-md font-semibold tracking-widest text-[#15803D]">
+          {/* Use Intern font for the brand name */}
+          <div className="text-md font-semibold font-intern tracking-widest text-[#15803D]">
             Dandii
           </div>
         </div>
@@ -615,7 +682,15 @@ export function PublicMap({ user }: PublicMapProps) {
               {selectedStop && !detail && (
                 <StopCard stop={selectedStop} onDirections={openDirectionsTo} />
               )}
-              {detail && <RouteSheet detail={detail} onClose={clearSelection} />}
+              {detail && (
+                <RouteSheet
+                  detail={detail}
+                  onClose={clearSelection}
+                  signedIn={Boolean(user)}
+                  isSaved={savedRouteIds.has(detail.id)}
+                  onToggleSave={() => onToggleSave(detail.id)}
+                />
+              )}
             </div>
           )}
 
@@ -656,6 +731,23 @@ export function PublicMap({ user }: PublicMapProps) {
       )}
     </div>
   );
+
+  const accountDrawer =
+    user && account ? (
+      <AccountDrawer
+        user={user}
+        account={account}
+        selectedRoute={
+          detail ? { id: detail.id, shortName: detail.shortName } : null
+        }
+        onOpenRoute={selectRoute}
+        onRunSearch={(q) => {
+          setQuery(q);
+          setTab("explore");
+          setSheetSnap("half");
+        }}
+      />
+    ) : null;
 
   return (
     <div className="fixed inset-0 h-dvh w-full overflow-hidden">
@@ -875,21 +967,7 @@ export function PublicMap({ user }: PublicMapProps) {
             className="h-12 w-full rounded-full bg-white pr-4 pl-11 text-[15px] text-[#202124] shadow-[0_1px_6px_rgba(0,0,0,0.25)] placeholder:text-[#5F6368] focus:outline-none"
           />
         </div>
-        {user ? (
-          user.hasConsoleAccess ? (
-            <Link
-              href="/console"
-              aria-label="Open console"
-              className="flex size-12 shrink-0 items-center justify-center rounded-full bg-[#152018] text-[13px] font-bold text-white shadow-[0_1px_6px_rgba(0,0,0,0.25)]"
-            >
-              {user.name.charAt(0).toUpperCase()}
-            </Link>
-          ) : (
-            <span className="flex size-12 shrink-0 items-center justify-center rounded-full bg-white text-[13px] font-bold text-[#1A73E8] shadow-[0_1px_6px_rgba(0,0,0,0.25)]">
-              {user.name.charAt(0).toUpperCase()}
-            </span>
-          )
-        ) : (
+        {accountDrawer ?? (
           <Link
             href="/sign-in"
             aria-label="Sign in"
@@ -900,22 +978,9 @@ export function PublicMap({ user }: PublicMapProps) {
         )}
       </div>
 
-      {/* Desktop: auth pill */}
+      {/* Desktop: account drawer (signed in) or sign-in pill */}
       <div className="absolute top-4 right-4 z-20 max-sm:hidden">
-        {user ? (
-          user.hasConsoleAccess ? (
-            <Link
-              href="/console"
-              className="rounded-full bg-[#152018] px-4 py-2 text-[13px] font-semibold text-white shadow-lg hover:bg-[#24352A]"
-            >
-              Open console
-            </Link>
-          ) : (
-            <span className="rounded-full bg-white px-4 py-2 text-[13px] font-medium text-[#3D4A3F] shadow-lg">
-              {user.name}
-            </span>
-          )
-        ) : (
+        {accountDrawer ?? (
           <Link
             href="/sign-in"
             className="rounded-full bg-[#152018] px-4 py-2 text-[13px] font-semibold text-white shadow-lg hover:bg-[#24352A]"
@@ -943,7 +1008,13 @@ export function PublicMap({ user }: PublicMapProps) {
               <StopCard stop={selectedStop} onDirections={openDirectionsTo} />
             )}
             {detail && (
-              <RouteSheet detail={detail} onClose={clearSelection} />
+              <RouteSheet
+                detail={detail}
+                onClose={clearSelection}
+                signedIn={Boolean(user)}
+                isSaved={savedRouteIds.has(detail.id)}
+                onToggleSave={() => onToggleSave(detail.id)}
+              />
             )}
           </div>
         </div>

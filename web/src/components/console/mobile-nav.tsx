@@ -27,6 +27,7 @@ export const MOBILE_TABS = [
 interface ConsoleMobileNavProps {
   user: { name: string; email: string; role: string };
   canManageSettings: boolean;
+  pendingProposals: number;
 }
 
 /**
@@ -37,6 +38,7 @@ interface ConsoleMobileNavProps {
 export function ConsoleMobileNav({
   user,
   canManageSettings,
+  pendingProposals,
 }: ConsoleMobileNavProps) {
   const pathname = usePathname();
   const router = useRouter();
@@ -128,11 +130,18 @@ export function ConsoleMobileNav({
               key={tab.href}
               href={tab.href}
               className={cx(
-                "flex flex-1 flex-col items-center gap-1 py-2.5 text-[10.5px] font-semibold",
+                "relative flex flex-1 flex-col items-center gap-1 py-2.5 text-[10.5px] font-semibold",
                 active ? "text-[#9DD5AB]" : "text-[#7E9182]",
               )}
             >
-              <Icon className="size-5.5" />
+              <span className="relative">
+                <Icon className="size-5.5" />
+                {tab.href === "/console/proposals" && pendingProposals > 0 && (
+                  <span className="absolute -top-1.5 -right-2 flex min-w-4 items-center justify-center rounded-full bg-[#DC2626] px-1 text-[9.5px] font-bold text-white ring-2 ring-[#152018]">
+                    {pendingProposals}
+                  </span>
+                )}
+              </span>
               {tab.label}
             </Link>
           );

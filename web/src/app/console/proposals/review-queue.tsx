@@ -176,16 +176,15 @@ export function ReviewQueue({ groups }: { groups: RouteGroup[] }) {
     new Set(),
   );
 
-  const onDecided = (routeId: string) => (
-    decision: "approve" | "reject",
-    proposalId: string,
-  ) => {
-    if (decision === "approve") {
-      setResolvedGroups((prev) => new Set(prev).add(routeId));
-    } else {
-      setResolvedProposals((prev) => new Set(prev).add(proposalId));
-    }
-  };
+  const onDecided =
+    (routeId: string) =>
+    (decision: "approve" | "reject", proposalId: string) => {
+      if (decision === "approve") {
+        setResolvedGroups((prev) => new Set(prev).add(routeId));
+      } else {
+        setResolvedProposals((prev) => new Set(prev).add(proposalId));
+      }
+    };
 
   const visibleGroups = groups
     .filter((g) => !resolvedGroups.has(g.routeId))

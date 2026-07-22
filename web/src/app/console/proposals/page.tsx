@@ -17,7 +17,9 @@ interface FareShape {
 function fareLabel(fare: FareShape | null): string {
   if (!fare) return "No fare set";
   if (fare.kind === "FLAT") {
-    return fare.flatAmountEtb != null ? `${fare.flatAmountEtb} ETB flat` : "Flat";
+    return fare.flatAmountEtb != null
+      ? `${fare.flatAmountEtb} ETB flat`
+      : "Flat";
   }
   if (fare.tiers.length === 0) return "Tiered";
   const amounts = fare.tiers.map((t) => t.amountEtb);
@@ -101,7 +103,11 @@ export default async function ProposalsReviewPage() {
       p.proposedFlatEtb,
       p.proposedTiers,
     )!;
-    const baseline = toShape(p.baselineKind, p.baselineFlatEtb, p.baselineTiers);
+    const baseline = toShape(
+      p.baselineKind,
+      p.baselineFlatEtb,
+      p.baselineTiers,
+    );
     const current: FareShape | null = p.route.fare
       ? {
           kind: p.route.fare.kind,
@@ -137,7 +143,9 @@ export default async function ProposalsReviewPage() {
       proposedLabel: fareLabel(proposed),
       proposedKey: fareKey(proposed),
       baselineLabel: fareLabel(baseline),
-      baselineChanged: baseline ? fareKey(baseline) !== fareKey(current!) : false,
+      baselineChanged: baseline
+        ? fareKey(baseline) !== fareKey(current!)
+        : false,
     });
   }
 

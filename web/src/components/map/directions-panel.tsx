@@ -1,7 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import type { Key } from "react-aria-components";
 import { SwitchVertical01 } from "@untitledui/icons";
+import { Select } from "@/components/base/select/select";
+import type { SelectItemType } from "@/components/base/select/select-shared";
 import { useMapStore } from "@/stores/map-store";
 import { cx } from "@/utils/cx";
 import {
@@ -77,64 +80,54 @@ function EndpointInput({
   dotClass: string;
 }) {
   const [query, setQuery] = useState("");
-  const [fetched, setFetched] = useState<StopSearchResult[]>([]);
-  const [open, setOpen] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const results = query.trim().length < 2 ? [] : fetched;
+  const [fetched, setFetched] = useState<SelectItemType[]>([]);
+  const stopsById = useRef(new Map<string, StopSearchResult>());
+  const inputValue = value ? value.name : query;
+  const items = !value && query.trim().length >= 2 ? fetched : [];
 
   useEffect(() => {
-    if (query.trim().length < 2) return;
+    if (value || query.trim().length < 2) return;
     const handle = setTimeout(async () => {
       const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
       const data = await res.json();
-      setFetched(data.stops ?? []);
-      setOpen(true);
+      const stops = (data.stops ?? []) as StopSearchResult[];
+      for (const stop of stops) stopsById.current.set(stop.id, stop);
+      setFetched(stops.map((stop) => ({ id: stop.id, label: stop.name })));
     }, 250);
     return () => clearTimeout(handle);
-  }, [query]);
-
-  useEffect(() => {
-    const onPointerDown = (e: PointerEvent) => {
-      if (!containerRef.current?.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("pointerdown", onPointerDown);
-    return () => document.removeEventListener("pointerdown", onPointerDown);
-  }, []);
+  }, [query, value]);
 
   return (
-    <div ref={containerRef} className="relative flex items-center gap-2.5">
+    <div className="flex items-center gap-2.5">
       <span className={cx("size-2.5 shrink-0 rounded-full", dotClass)} />
-      <input
-        value={value ? value.name : query}
-        onChange={(e) => {
-          onSelect(null);
-          setQuery(e.target.value);
-        }}
-        onFocus={() => results.length > 0 && setOpen(true)}
-        placeholder={placeholder}
-        className={cx(
-          "w-full rounded-lg bg-[#F1F3F4] px-3 py-2.5 text-[14px] text-[#202124] placeholder:text-[#5F6368]",
-          "focus:bg-white focus:outline-2 focus:outline-[#1A73E8]",
-          value?.isCurrentLocation && "text-[#1A73E8]",
-        )}
-      />
-      {open && results.length > 0 && !value && (
-        <div className="absolute top-full right-0 left-5 z-20 mt-1 flex max-h-48 flex-col overflow-y-auto rounded-xl bg-white py-1 shadow-lg ring-1 ring-black/10">
-          {results.map((stop) => (
-            <button
-              key={stop.id}
-              onClick={() => {
-                onSelect(stop);
-                setQuery("");
-                setOpen(false);
-              }}
-              className="cursor-pointer px-3.5 py-2 text-left text-[13px] text-[#202124] hover:bg-[#F8F9FA]"
-            >
-              {stop.name}
-            </button>
-          ))}
-        </div>
-      )}
+      <div className="min-w-0 flex-1">
+        <Select.ComboBox
+          aria-label={placeholder}
+          shortcut={false}
+          size="sm"
+          placeholder={placeholder}
+          inputValue={inputValue}
+          onInputChange={(next) => {
+            if (value) onSelect(null);
+            setQuery(next);
+          }}
+          selectedKey={value?.id ?? null}
+          onSelectionChange={(key: Key | null) => {
+            if (key == null) {
+              onSelect(null);
+              return;
+            }
+            const stop = stopsById.current.get(String(key));
+            if (!stop) return;
+            onSelect(stop);
+            setQuery("");
+          }}
+          items={items}
+          allowsEmptyCollection
+        >
+          {(item) => <Select.Item id={item.id} label={item.label} />}
+        </Select.ComboBox>
+      </div>
     </div>
   );
 }

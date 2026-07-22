@@ -1,12 +1,23 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ArrowLeft } from "@untitledui/icons";
-import { getAccountData } from "@/lib/account";
+import { getAccountData, type SubmissionItem } from "@/lib/account";
 import { CONSOLE_ROLES, type AppRole } from "@/lib/permissions";
 import { getSession } from "@/lib/session";
+import { MarkSubmissionsViewed } from "./mark-viewed";
 import { ProfileForm } from "./profile-form";
 
 export const dynamic = "force-dynamic";
+
+const STATUS_STYLE: Record<
+  SubmissionItem["status"],
+  { bg: string; fg: string; label: string }
+> = {
+  PENDING: { bg: "#FEF3C7", fg: "#92400E", label: "Pending" },
+  APPROVED: { bg: "#DCFCE7", fg: "#166534", label: "Approved" },
+  REJECTED: { bg: "#FEE2E2", fg: "#991B1B", label: "Rejected" },
+  SUPERSEDED: { bg: "#E8EAED", fg: "#5F6368", label: "Resolved" },
+};
 
 export default async function ProfilePage() {
   const session = await getSession();
@@ -25,6 +36,7 @@ export default async function ProfilePage() {
 
   return (
     <div className="min-h-dvh bg-[#F1F3F4]">
+      {account.unseenCount > 0 && <MarkSubmissionsViewed />}
       <div className="mx-auto flex max-w-2xl flex-col gap-6 px-4 py-8">
         <Link
           href="/"
@@ -68,17 +80,60 @@ export default async function ProfilePage() {
 
         <ProfileForm initialName={session.user.name} />
 
-        {pending > 0 && (
-          <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-black/5">
-            <div className="text-[13px] text-[#5F6368]">
-              You have{" "}
-              <span className="font-semibold text-[#202124]">{pending}</span>{" "}
-              fare {pending === 1 ? "edit" : "edits"} awaiting review. Track
-              {" "}
-              {pending === 1 ? "it" : "them"} from the account panel on the map.
-            </div>
+        {/* Submitted fares — the avatar dropdown links here (#submissions). */}
+        <div
+          id="submissions"
+          className="scroll-mt-6 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-black/5"
+        >
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-[15px] font-semibold text-[#202124]">
+              Submitted fares
+            </h2>
+            {pending > 0 && (
+              <span className="text-[12.5px] text-[#5F6368]">
+                {pending} awaiting review
+              </span>
+            )}
           </div>
-        )}
+          {account.submissions.length === 0 ? (
+            <p className="text-[13px] text-[#5F6368]">
+              No fare edits yet — open any route on the map and suggest a
+              correction when the posted fare has changed.
+            </p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {account.submissions.map((s) => {
+                const st = STATUS_STYLE[s.status];
+                return (
+                  <div
+                    key={s.id}
+                    className="rounded-xl border border-[#EEF1EA] px-3.5 py-2.5"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-[12.5px] font-semibold text-[#1C2321]">
+                        {s.routeShortName}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate text-[12.5px] text-[#5F6368]">
+                        {s.proposedLabel}
+                      </span>
+                      <span
+                        className="shrink-0 rounded-full px-2 py-0.5 text-[10.5px] font-semibold"
+                        style={{ background: st.bg, color: st.fg }}
+                      >
+                        {st.label}
+                      </span>
+                    </div>
+                    {s.reviewNote && (
+                      <div className="mt-1 text-[11.5px] text-[#5F6368]">
+                        {s.reviewNote}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
 
         {hasConsoleAccess && (
           <Link

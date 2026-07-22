@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { formatProposedLabel } from "@/lib/proposed-label";
 
 export interface SavedRouteItem {
   routeId: string;
@@ -25,19 +26,8 @@ export interface AccountData {
   unseenCount: number;
 }
 
-function proposedLabel(p: {
-  proposedKind: "FLAT" | "TIERED";
-  proposedFlatEtb: { toNumber(): number } | null;
-  proposedTiers: unknown;
-}): string {
-  if (p.proposedKind === "FLAT") {
-    return `Flat · ${p.proposedFlatEtb?.toNumber() ?? 0} ETB`;
-  }
-  const tiers = (p.proposedTiers as { amountEtb: number }[] | null) ?? [];
-  if (tiers.length === 0) return "Tiered";
-  const amounts = tiers.map((t) => t.amountEtb);
-  return `Tiered · ${Math.min(...amounts)}–${Math.max(...amounts)} ETB`;
-}
+/** Format a proposed fare for list UIs (profile, account menu, library rail). */
+export { formatProposedLabel } from "@/lib/proposed-label";
 
 export async function getAccountData(userId: string): Promise<AccountData> {
   const [saved, proposals, user] = await Promise.all([
@@ -94,7 +84,7 @@ export async function getAccountData(userId: string): Promise<AccountData> {
       routeShortName: p.route.shortName,
       routeLongName: p.route.longName,
       status: p.status as SubmissionItem["status"],
-      proposedLabel: proposedLabel(p),
+      proposedLabel: formatProposedLabel(p),
       reviewNote: p.reviewNote,
       decidedAt: p.decidedAt?.toISOString() ?? null,
       createdAt: p.createdAt.toISOString(),

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { motion, useAnimationControls, type PanInfo } from "motion/react";
+import { ChevronLeftDouble, ChevronNextDouble } from "@untitledui/icons";
 import { useMapStore, type SheetSnap } from "@/stores/map-store";
 import { cx } from "@/utils/cx";
 
@@ -19,7 +20,20 @@ const SPRING = { type: "spring" as const, stiffness: 380, damping: 38 };
  * On ≥sm screens the same content renders as a fixed floating left panel
  * (Google Maps desktop convention) and dragging is disabled.
  */
-export function BottomSheet({ children }: { children: React.ReactNode }) {
+export function BottomSheet({
+  children,
+  desktopHidden = false,
+  onCollapse,
+  onExpand,
+}: {
+  children: React.ReactNode;
+  /** Hide the desktop panel (user collapsed it via the chevron). */
+  desktopHidden?: boolean;
+  /** Called when the user clicks the desktop collapse chevron. */
+  onCollapse?: () => void;
+  /** Called when the user clicks the thin re-open tab while collapsed. */
+  onExpand?: () => void;
+}) {
   const { sheetSnap, setSheetSnap } = useMapStore();
   const controls = useAnimationControls();
   const [viewportH, setViewportH] = useState(0);
@@ -97,7 +111,7 @@ export function BottomSheet({ children }: { children: React.ReactNode }) {
         <div
           ref={scrollRef}
           className={cx(
-            "min-h-0 flex-1 overscroll-contain px-4 pb-[env(safe-area-inset-bottom)]",
+            "min-h-0 flex-1 overscroll-contain pb-[env(safe-area-inset-bottom)]",
             sheetSnap === "full"
               ? "touch-pan-y overflow-y-auto"
               : "overflow-hidden",
@@ -107,13 +121,36 @@ export function BottomSheet({ children }: { children: React.ReactNode }) {
         </div>
       </motion.div>
 
-      {/* Desktop: floating left panel */}
-      {/* Bottom clearance keeps the layers button visible below the panel. */}
-      <div className="absolute top-4 left-4 z-30 hidden max-h-[calc(100dvh-6rem)] w-96 flex-col overflow-hidden rounded-2xl bg-white shadow-xl ring-1 ring-black/5 sm:flex">
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
-          {children}
+      {/* Desktop: floating left panel (Google-Maps style). Collapsible via the
+          chevron; when collapsed, a thin re-open tab stays on the left edge. */}
+      {desktopHidden ? (
+        onExpand && (
+          <button
+            onClick={onExpand}
+            aria-label="Expand panel"
+            title="Expand panel"
+            className="absolute top-4 left-0 z-30 hidden h-14 w-8 cursor-pointer items-center justify-center rounded-r-xl bg-white text-[#5F6368] shadow-md ring-1 ring-black/10 hover:text-[#202124] sm:flex"
+          >
+            <ChevronNextDouble className="size-3.5" />
+          </button>
+        )
+      ) : (
+        <div className="absolute top-4 left-4 z-30 hidden max-h-[calc(100dvh-6rem)] flex-col overflow-hidden rounded-2xl bg-white shadow-xl ring-1 ring-black/5 sm:flex">
+          <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+            {children}
+          </div>
+          {onCollapse && (
+            <button
+              onClick={onCollapse}
+              aria-label="Collapse panel"
+              title="Collapse panel"
+              className="absolute top-1/2 -right-3 flex size-6 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full bg-white text-[#5F6368] shadow-md ring-1 ring-black/10 hover:text-[#202124]"
+            >
+              <ChevronLeftDouble className="size-3.5" />
+            </button>
+          )}
         </div>
-      </div>
+      )}
     </>
   );
 }

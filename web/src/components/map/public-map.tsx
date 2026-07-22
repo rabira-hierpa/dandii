@@ -689,6 +689,11 @@ export function PublicMap({ user, account }: PublicMapProps) {
                   signedIn={Boolean(user)}
                   isSaved={savedRouteIds.has(detail.id)}
                   onToggleSave={() => onToggleSave(detail.id)}
+                  selectedRoute={
+                    detail
+                      ? { id: detail.id, shortName: detail.shortName }
+                      : null
+                  }
                 />
               )}
             </div>
@@ -1012,6 +1017,9 @@ export function PublicMap({ user, account }: PublicMapProps) {
                 detail={detail}
                 onClose={clearSelection}
                 signedIn={Boolean(user)}
+                selectedRoute={
+                  detail ? { id: detail.id, shortName: detail.shortName } : null
+                }
                 isSaved={savedRouteIds.has(detail.id)}
                 onToggleSave={() => onToggleSave(detail.id)}
               />

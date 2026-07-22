@@ -68,7 +68,7 @@ export function AccountDrawer({
   selectedRoute,
   onOpenRoute,
   onRunSearch,
-}: AccountDrawerProps) {
+}: Readonly<AccountDrawerProps>) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);

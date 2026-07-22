@@ -91,6 +91,13 @@ export function ConsoleMobileNav({
                 </div>
               </div>
               <Link
+                href="/console/feeds"
+                className="px-3.5 py-2.5 text-[13px] font-medium hover:bg-[#F4F5F2]"
+                onClick={() => setMenuOpen(false)}
+              >
+                Feed Versions
+              </Link>
+              <Link
                 href="/"
                 className="px-3.5 py-2.5 text-[13px] font-medium hover:bg-[#F4F5F2]"
                 onClick={() => setMenuOpen(false)}

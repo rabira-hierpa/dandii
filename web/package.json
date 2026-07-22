@@ -22,6 +22,7 @@
     "@turf/simplify": "^7.3.5",
     "@untitledui/file-icons": "^0.0.9",
     "@untitledui/icons": "^0.0.22",
+    "archiver": "^8.0.0",
     "better-auth": "^1.6.23",
     "input-otp": "^1.4.2",
     "maplibre-gl": "^5.24.0",
@@ -43,6 +44,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/archiver": "^8.0.0",
     "@types/node": "^20",
     "@types/papaparse": "^5.5.2",
     "@types/react": "^19",

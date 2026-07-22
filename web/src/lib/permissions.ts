@@ -17,6 +17,10 @@ export const statement = {
   // fare:update, route-operator+). Approval writes fares via the permission-
   // free applyFareChange helper.
   proposal: ["review"],
+  // Generating a versioned GTFS export (fares overlay). Held by every console-
+  // write role — the same set that reviews proposals — so a maintainer can
+  // publish a feed after approving corrections.
+  feed: ["generate"],
   system: ["settings"],
 } as const;
 
@@ -28,6 +32,7 @@ export const superAdminRole = ac.newRole({
   fare: ["read", "create", "update", "delete"],
   closure: ["read", "create", "update", "delete"],
   proposal: ["review"],
+  feed: ["generate"],
   system: ["settings"],
 });
 
@@ -39,6 +44,7 @@ export const adminRole = ac.newRole({
   fare: ["read", "create", "update", "delete"],
   closure: ["read", "create", "update", "delete"],
   proposal: ["review"],
+  feed: ["generate"],
   system: ["settings"],
 });
 
@@ -48,6 +54,7 @@ export const routeOperatorRole = ac.newRole({
   fare: ["read", "create", "update", "delete"],
   closure: ["read", "create", "update", "delete"],
   proposal: ["review"],
+  feed: ["generate"],
 });
 
 export const maintainerRole = ac.newRole({
@@ -55,6 +62,7 @@ export const maintainerRole = ac.newRole({
   fare: ["read"],
   closure: ["read", "create", "update", "delete"],
   proposal: ["review"],
+  feed: ["generate"],
 });
 
 /** Regular signed-in citizens: no console access. */

@@ -79,3 +79,6 @@ otp-data/graph.obj
 # Large data files (exceed GitHub's 100MB limit)
 otp-data/
 osm/
+
+# Generated GTFS feed exports (written to a Docker volume in prod)
+.gtfs-exports/

@@ -11,6 +11,7 @@ const NAV_ITEMS = [
   { href: "/console/network", label: "Network Map", dot: "#0F766E" },
   { href: "/console/fares", label: "Fare Management", dot: "#1D4ED8" },
   { href: "/console/proposals", label: "Fare Review", dot: "#DC2626" },
+  { href: "/console/feeds", label: "Feed Versions", dot: "#0891B2" },
   { href: "/console/analytics", label: "Analytics", dot: "#9333EA" },
 ];
 

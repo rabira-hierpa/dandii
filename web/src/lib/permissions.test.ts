@@ -22,8 +22,9 @@ describe("role matrix (T3)", () => {
 
   it("keeps citizens out of the console and proposal review", () => {
     expect(CONSOLE_ROLES).not.toContain("user");
-    expect(roles.user.statements.proposal ?? []).not.toContain("review");
-    expect(roles.user.statements.feed ?? []).not.toContain("generate");
+    // Citizen role only declares route/fare/closure — no proposal or feed keys.
+    expect("proposal" in roles.user.statements).toBe(false);
+    expect("feed" in roles.user.statements).toBe(false);
   });
 
   it("denies maintainers direct fare:update (approvals use applyFareChange)", () => {

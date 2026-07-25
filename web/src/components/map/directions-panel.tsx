@@ -83,7 +83,15 @@ function EndpointInput({
   const [fetched, setFetched] = useState<SelectItemType[]>([]);
   const stopsById = useRef(new Map<string, StopSearchResult>());
   const inputValue = value ? value.name : query;
-  const items = !value && query.trim().length >= 2 ? fetched : [];
+  // react-aria ComboBox requires selectedKey to exist inside `items`. When a
+  // stop is selected the collection must be exactly that item — filtering it
+  // out (e.g. `[]`) makes react-aria clear the field on the next render, which
+  // wiped one endpoint whenever the user typed in the other.
+  const items: SelectItemType[] = value
+    ? [{ id: value.id, label: value.name }]
+    : query.trim().length >= 2
+      ? fetched
+      : [];
 
   useEffect(() => {
     if (value || query.trim().length < 2) return;

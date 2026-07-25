@@ -19,6 +19,7 @@ import {
   CLOSED_ROUTE_COLOR,
   OPERATOR_CODES,
   OPERATOR_META,
+  type OperatorCode,
 } from "@/lib/operators";
 import {
   recordSearch,
@@ -166,6 +167,19 @@ export function PublicMap({ user, account }: PublicMapProps) {
   // Desktop sidebar collapse (Google-Maps chevron). Desktop-only; the mobile
   // bottom sheet has its own snap points.
   const [collapsed, setCollapsed] = useState(false);
+
+  // Agency filter for search results (empty = all agencies). Narrows the
+  // routes query server-side so the 8-result cap goes to the chosen agencies.
+  const [operatorFilter, setOperatorFilter] = useState<Set<OperatorCode>>(
+    new Set(),
+  );
+  const toggleOperatorFilter = (code: OperatorCode) =>
+    setOperatorFilter((prev) => {
+      const next = new Set(prev);
+      if (next.has(code)) next.delete(code);
+      else next.add(code);
+      return next;
+    });
 
   // Hamburger library rail: Saved / Recent / Fare submissions.
   const [libraryOpen, setLibraryOpen] = useState(false);
@@ -345,12 +359,17 @@ export function PublicMap({ user, account }: PublicMapProps) {
   useEffect(() => {
     if (detailSource === "direct") return;
     if (query.trim().length < 2) return;
+    const ops = [...operatorFilter];
     const handle = setTimeout(async () => {
-      const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+      const params = new URLSearchParams({ q: query });
+      if (ops.length > 0) params.set("operators", ops.join(","));
+      const res = await fetch(`/api/search?${params}`);
       setSearchResults(await res.json());
     }, 250);
     return () => clearTimeout(handle);
-  }, [query, detailSource]);
+    // operatorFilter is spread into `ops` so the effect re-runs on filter change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, detailSource, operatorFilter]);
 
   // Load route detail when a route is selected.
   useEffect(() => {
@@ -727,6 +746,40 @@ export function PublicMap({ user, account }: PublicMapProps) {
                 className="w-full rounded-full bg-[#F1F3F4] py-2.5 pr-4 pl-10 text-[14px] text-[#202124] placeholder:text-[#5F6368] focus:bg-white focus:outline-2 focus:outline-[#1A73E8]"
               />
             </div>
+
+            {/* Agency filter chips — narrow search results by operator. */}
+            {query.trim().length >= 2 && detailSource !== "direct" && (
+              <div className="flex flex-wrap gap-1.5">
+                {OPERATOR_CODES.map((code) => {
+                  const meta = OPERATOR_META[code];
+                  const active = operatorFilter.has(code);
+                  return (
+                    <button
+                      key={code}
+                      onClick={() => toggleOperatorFilter(code)}
+                      aria-pressed={active}
+                      className={cx(
+                        "flex cursor-pointer items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11.5px] font-medium transition-colors",
+                        active
+                          ? "border-transparent text-white"
+                          : "border-[#DADCE0] text-[#3D4A3F] hover:bg-[#F4F5F2]",
+                      )}
+                      style={active ? { background: meta.color } : undefined}
+                    >
+                      <span
+                        className="size-2 rounded-full"
+                        style={{
+                          background: active
+                            ? "rgba(255,255,255,0.9)"
+                            : meta.color,
+                        }}
+                      />
+                      {meta.short}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
 
             {/* Library section body (Saved / Recent / Submissions) */}
             {libraryOpen &&

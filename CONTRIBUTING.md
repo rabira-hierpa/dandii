@@ -26,11 +26,11 @@ npm run dev
 
 Useful commands (from `web/`):
 
-| Command | Purpose |
-|---------|---------|
-| `npm run lint` | ESLint |
-| `npx tsc --noEmit` | Typecheck |
-| `npm test` | Vitest unit / integration tests |
+| Command            | Purpose                                                     |
+| ------------------ | ----------------------------------------------------------- |
+| `npm run lint`     | ESLint                                                      |
+| `npx tsc --noEmit` | Typecheck                                                   |
+| `npm test`         | Vitest unit / integration tests                             |
 | `npm run test:e2e` | Playwright (needs app + seeded DB; reuses `localhost:3000`) |
 
 Branch off `dev` (or `main` if you are fixing a production hotfix). Keep PRs
@@ -65,7 +65,7 @@ Example: `feat: library rail for saved and recent searches`
 - The vendored DT4A GTFS feed under `data/gtfs-2026/` remains subject to its
   upstream terms. Dandii application code is under the
   [PolyForm Noncommercial License](./LICENSE): keep the Required Notice /
-  credit Rabira Hierpa · Dandii, and do **not** use the work commercially
+  credit Rabra Hierpa · Dandii, and do **not** use the work commercially
   without a separate written license from the copyright holder.
 - Prefer preserving approved fare data when reseeding (`npm run db:seed`
   defaults to preserve-fares). Do not wipe production-like data casually.

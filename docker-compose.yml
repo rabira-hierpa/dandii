@@ -38,8 +38,12 @@ services:
       # talks to it over the Docker network via OTP_URL=http://otp:8080.
       - "127.0.0.1:8081:8080"
     volumes:
-      # Contains et-addisababa-gtfs-2026.zip (no OSM extract — OTP runs
-      # transit-only, no street-level walk legs).
+      # Contains et-addisababa-gtfs-2026.zip (per-operator agencies) AND
+      # addis.osm.pbf (Addis street network, clipped from the Geofabrik
+      # Ethiopia extract to the transit bbox). The OSM layer gives OTP a real
+      # walk network: coordinate-based planning works, walk legs get street
+      # geometry (no more broken lines), and stop-to-stop transfers route over
+      # streets — required by the /api/directions OTP transfer fallback.
       - ./otp-data:/var/opentripplanner
     # Rebuild the graph from the GTFS zip on boot rather than loading a
     # graph.obj that may have been produced by a different image. With the

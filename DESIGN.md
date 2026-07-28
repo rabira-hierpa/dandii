@@ -95,3 +95,16 @@ Private areas (`/console`, `/settings`, `/profile`, `/api`) are disallowed in ro
 - Direct, city-local: “Addis”, “minibus”, “fare”, “route short name”
 - No generic SaaS hero copy
 - Amharic may appear in stop/route names from GTFS — never invent translations
+
+---
+
+## Status pages
+
+Public error / gate surfaces stay inside the map world — soft green atmosphere, route-line motif, Poppins codes, minibus watermark. Feeling: still with Dandii; clear path back to the map.
+
+| Page | Route | Copy cue |
+|------|-------|----------|
+| Not found | `app/not-found.tsx` | “This stop isn’t on the map” |
+| Access denied | `/access-denied` | “Staff routes only” |
+
+Shared shell: `web/src/components/status/status-page.tsx`. Insufficient roles in `requireRole` redirect to `/access-denied` (unauthenticated still goes to `/sign-in`).

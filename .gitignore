@@ -73,11 +73,11 @@ temp/
 *~.nib
 
 
-# OTP build artifact (rebuilt from otp-data sources)
-otp-data/graph.obj
-
-# Large data files (exceed GitHub's 100MB limit)
-otp-data/
+# OTP graph inputs are versioned so prod can rebuild the graph; the built
+# graph.obj, backups, and any other large data stay ignored.
+otp-data/*
+!otp-data/et-addisababa-gtfs-2026.zip
+!otp-data/addis.osm.pbf
 osm/
 
 # Generated GTFS feed exports (written to a Docker volume in prod)

@@ -60,6 +60,75 @@
     }
 }
 
+/* Status pages (404 / access denied) — quiet entrance, not marketing choreography. */
+@keyframes status-rise {
+    from {
+        opacity: 0;
+        transform: translateY(18px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes status-roll {
+    from {
+        opacity: 0;
+        transform: translateX(40px);
+    }
+    to {
+        opacity: 0.18;
+        transform: translateX(0);
+    }
+}
+
+@keyframes status-pulse {
+    0% {
+        transform: scale(1);
+        opacity: 1;
+    }
+    70% {
+        transform: scale(1.8);
+        opacity: 0;
+    }
+    100% {
+        transform: scale(1.8);
+        opacity: 0;
+    }
+}
+
+@utility status-rise {
+    animation: status-rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@utility status-rise-delay-1 {
+    animation: status-rise 0.7s 0.05s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@utility status-rise-delay-2 {
+    animation: status-rise 0.75s 0.1s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@utility status-rise-delay-3 {
+    animation: status-rise 0.7s 0.12s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@utility status-rise-delay-4 {
+    animation: status-rise 0.75s 0.18s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@utility status-rise-delay-5 {
+    animation: status-rise 0.75s 0.24s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@utility status-rise-delay-6 {
+    animation: status-rise 0.75s 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@utility status-rise-delay-7 {
+    animation: status-rise 0.75s 0.36s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@utility status-roll {
+    animation: status-roll 1.1s 0.2s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@utility status-pulse {
+    animation: status-pulse 1.8s ease-out infinite;
+}
+
 html,
 body {
     font-family: var(--font-body);

@@ -1,71 +1,23 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Key } from "react-aria-components";
 import { SwitchVertical01 } from "@untitledui/icons";
 import { Select } from "@/components/base/select/select";
 import type { SelectItemType } from "@/components/base/select/select-shared";
+import { OPERATOR_CODES, OPERATOR_META, type OperatorCode } from "@/lib/operators";
 import { useMapStore } from "@/stores/map-store";
 import { cx } from "@/utils/cx";
-import {
-  classifyItineraries,
-  MODE_META,
-  type ClassifiedItinerary,
-  type ModeKey,
-} from "./route-modes";
-import type { OtpItinerary, StopSearchResult } from "./types";
-
-/**
- * The OTP graph is transit-only (no OSM streets), so coordinate-based
- * planning fails with LOCATION_NOT_FOUND. Both endpoints are always transit
- * stops, so we plan stop-to-stop via GTFS ids ("1:" is OTP's feed id for a
- * single-feed graph); transfers fall back to straight-line walking.
- */
-const PLAN_QUERY = `
-query Plan($from: String!, $to: String!, $date: String, $time: String) {
-  plan(
-    fromPlace: $from
-    toPlace: $to
-    date: $date
-    time: $time
-    transportModes: [{ mode: WALK }, { mode: TRANSIT }]
-    numItineraries: 5
-  ) {
-    itineraries {
-      duration
-      walkDistance
-      startTime
-      endTime
-      legs {
-        mode
-        duration
-        distance
-        startTime
-        endTime
-        from { name }
-        to { name }
-        route { shortName longName }
-        legGeometry { points }
-      }
-    }
-  }
-}`;
+import type { DirectRoute, StopSearchResult, TransferJourney } from "./types";
 
 export interface DirectionsEndpoint extends StopSearchResult {
   isCurrentLocation?: boolean;
 }
 
-function formatDuration(seconds: number) {
+function formatMinutes(seconds: number) {
   const minutes = Math.round(seconds / 60);
   if (minutes < 60) return `${minutes} min`;
   return `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
-}
-
-function formatTime(ms: number) {
-  return new Date(ms).toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
 }
 
 function EndpointInput({
@@ -83,7 +35,15 @@ function EndpointInput({
   const [fetched, setFetched] = useState<SelectItemType[]>([]);
   const stopsById = useRef(new Map<string, StopSearchResult>());
   const inputValue = value ? value.name : query;
-  const items = !value && query.trim().length >= 2 ? fetched : [];
+  // react-aria ComboBox requires selectedKey to exist inside `items`. When a
+  // stop is selected the collection must be exactly that item — filtering it
+  // out (e.g. `[]`) makes react-aria clear the field on the next render, which
+  // wiped one endpoint whenever the user typed in the other.
+  const items: SelectItemType[] = value
+    ? [{ id: value.id, label: value.name }]
+    : query.trim().length >= 2
+      ? fetched
+      : [];
 
   useEffect(() => {
     if (value || query.trim().length < 2) return;
@@ -141,10 +101,16 @@ interface DirectionsPanelProps {
   to: DirectionsEndpoint | null;
   setFrom: (stop: DirectionsEndpoint | null) => void;
   setTo: (stop: DirectionsEndpoint | null) => void;
-  results: ClassifiedItinerary[] | null;
-  activeMode: ModeKey | null;
-  onActiveMode: (mode: ModeKey) => void;
-  onResults: (results: ClassifiedItinerary[] | null) => void;
+  results: DirectRoute[] | null;
+  fallback: TransferJourney[] | null;
+  operators: Set<OperatorCode>;
+  onToggleOperator: (code: OperatorCode) => void;
+  selectedRouteId: string | null;
+  onSelectRoute: (routeId: string) => void;
+  selectedJourneyId: string | null;
+  onSelectJourney: (id: string) => void;
+  onResults: (results: DirectRoute[] | null) => void;
+  onFallback: (journeys: TransferJourney[] | null) => void;
   onEndpoints: (
     endpoints: { from: DirectionsEndpoint; to: DirectionsEndpoint } | null,
   ) => void;
@@ -156,20 +122,22 @@ export function DirectionsPanel({
   setFrom,
   setTo,
   results,
-  activeMode,
-  onActiveMode,
+  fallback,
+  operators,
+  onToggleOperator,
+  selectedRouteId,
+  onSelectRoute,
+  selectedJourneyId,
+  onSelectJourney,
   onResults,
+  onFallback,
   onEndpoints,
 }: DirectionsPanelProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const setSheetSnap = useMapStore((s) => s.setSheetSnap);
 
-  /**
-   * Snap the user's position to the nearest transit stop (the street-less
-   * OTP graph can only route between stops).
-   */
+  /** Snap the user's position to the nearest transit stop. */
   const useMyLocation = () => {
     if (!navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition(async (position) => {
@@ -181,7 +149,6 @@ export function DirectionsPanel({
         let best = Infinity;
         for (const feature of data.features) {
           const [lon, lat] = (feature.geometry as GeoJSON.Point).coordinates;
-          // Equirectangular approximation is plenty at city scale.
           const dLat = lat - latitude;
           const dLon = (lon - longitude) * Math.cos((latitude * Math.PI) / 180);
           const d = dLat * dLat + dLon * dLon;
@@ -208,52 +175,24 @@ export function DirectionsPanel({
     setTo(from);
   };
 
-  const requestPlan = async (date?: string, time?: string) => {
-    const res = await fetch("/api/otp", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        query: PLAN_QUERY,
-        variables: {
-          from: `1:${from!.id}`,
-          to: `1:${to!.id}`,
-          date: date ?? null,
-          time: time ?? null,
-        },
-      }),
-    });
-    const data = await res.json();
-    return (data?.data?.plan?.itineraries ?? []) as OtpItinerary[];
-  };
-
   const plan = async () => {
     if (!from || !to) return;
     setLoading(true);
     setError(null);
-    setNotice(null);
     onResults(null);
+    onFallback(null);
     try {
-      let found = await requestPlan();
-      if (found.length === 0) {
-        // Service may be over for today (roughly 05:00–22:00) — retry for
-        // tomorrow morning in the network's timezone.
-        const tomorrow = new Date(Date.now() + 24 * 3600 * 1000);
-        const date = new Intl.DateTimeFormat("en-CA", {
-          timeZone: "Africa/Addis_Ababa",
-        }).format(tomorrow);
-        found = await requestPlan(date, "06:00");
-        if (found.length > 0) {
-          setNotice("Service has ended for today — showing tomorrow from 6:00.");
-        }
-      }
-      if (found.length === 0) {
-        setError("No routes found between these places.");
-      } else {
-        onResults(classifyItineraries(found));
-        onActiveMode("fastest");
-        onEndpoints({ from, to });
-        setSheetSnap("half");
-      }
+      const params = new URLSearchParams({ from: from.id, to: to.id });
+      const res = await fetch(`/api/directions?${params}`);
+      const data = await res.json();
+      const direct = (data?.direct ?? []) as DirectRoute[];
+      const journeys = (data?.fallback ?? []) as TransferJourney[];
+      onResults(direct);
+      onFallback(journeys);
+      onEndpoints({ from, to });
+      if (direct.length > 0) onSelectRoute(direct[0].routeId);
+      else if (journeys.length > 0) onSelectJourney(journeys[0].id);
+      setSheetSnap("half");
     } catch {
       setError("Journey planner is unavailable right now.");
     } finally {
@@ -261,7 +200,47 @@ export function DirectionsPanel({
     }
   };
 
-  const active = results?.find((r) => r.mode === activeMode) ?? null;
+  // Client-side agency filter over the already-ranked results (no refetch).
+  const visible = useMemo(() => {
+    if (!results) return null;
+    if (operators.size === 0) return results;
+    return results.filter((r) => r.operator && operators.has(r.operator.code));
+  }, [results, operators]);
+
+  const visibleFallback = useMemo(() => {
+    if (!fallback) return null;
+    if (operators.size === 0) return fallback;
+    return fallback.filter(
+      (j) => j.primaryOperator && operators.has(j.primaryOperator.code),
+    );
+  }, [fallback, operators]);
+
+  // Keep a valid selection as the filter changes.
+  useEffect(() => {
+    if (visible && visible.length > 0) {
+      if (!visible.some((r) => r.routeId === selectedRouteId)) {
+        onSelectRoute(visible[0].routeId);
+      }
+    } else if (visibleFallback && visibleFallback.length > 0) {
+      if (!visibleFallback.some((j) => j.id === selectedJourneyId)) {
+        onSelectJourney(visibleFallback[0].id);
+      }
+    }
+  }, [
+    visible,
+    visibleFallback,
+    selectedRouteId,
+    selectedJourneyId,
+    onSelectRoute,
+    onSelectJourney,
+  ]);
+
+  const hasAny =
+    (results && results.length > 0) || (fallback && fallback.length > 0);
+  const countFor = (code: OperatorCode) =>
+    results && results.length > 0
+      ? results.filter((r) => r.operator?.code === code).length
+      : (fallback ?? []).filter((j) => j.primaryOperator?.code === code).length;
 
   return (
     <div className="flex flex-col gap-3">
@@ -304,106 +283,250 @@ export function DirectionsPanel({
         </button>
       </div>
 
-      {error && <div className="text-[13px] text-[#D93025]">{error}</div>}
-      {notice && (
-        <div className="rounded-lg bg-[#FEF7E0] px-3 py-2 text-[12.5px] text-[#B06000]">
-          {notice}
-        </div>
-      )}
-
-      {/* Mode cards — horizontal scrollable row */}
-      {results && (
-        <div className="scrollbar-hide -mx-4 flex snap-x gap-2.5 overflow-x-auto px-4 pb-1">
-          {results.map((result) => {
-            const meta = MODE_META[result.mode];
-            const isActive = result.mode === activeMode;
+      {/* Agency filter — narrows the ranked results by operator. */}
+      {hasAny && (
+        <div className="flex flex-wrap gap-1.5">
+          {OPERATOR_CODES.map((code) => {
+            const meta = OPERATOR_META[code];
+            const active = operators.has(code);
+            const count = countFor(code);
+            if (count === 0 && !active) return null;
             return (
               <button
-                key={result.mode}
-                onClick={() => onActiveMode(result.mode)}
+                key={code}
+                onClick={() => onToggleOperator(code)}
+                aria-pressed={active}
                 className={cx(
-                  "w-40 shrink-0 cursor-pointer snap-start rounded-2xl border-2 p-3 text-left transition-colors",
-                  isActive
-                    ? "bg-white shadow-md"
-                    : "border-transparent bg-[#F8F9FA] hover:bg-[#F1F3F4]",
+                  "flex cursor-pointer items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11.5px] font-medium transition-colors",
+                  active
+                    ? "border-transparent text-white"
+                    : "border-[#DADCE0] text-[#3D4A3F] hover:bg-[#F4F5F2]",
                 )}
-                style={isActive ? { borderColor: meta.color } : undefined}
+                style={active ? { background: meta.color } : undefined}
               >
-                <div
-                  className="text-[11px] font-bold tracking-wide uppercase"
-                  style={{ color: meta.color }}
-                >
-                  {meta.label}
-                </div>
-                <div className="mt-1 text-[17px] font-bold text-[#202124]">
-                  {formatDuration(result.itinerary.duration)}
-                </div>
-                <div className="text-[12px] text-[#5F6368]">
-                  {result.mode === "cheapest"
-                    ? `≈ ${result.fareEtb} ETB total`
-                    : result.mode === "scenic"
-                      ? `${(result.distanceMeters / 1000).toFixed(1)} km · ${result.places.length} places`
-                      : `≈ ${result.fareEtb} ETB · ${(result.distanceMeters / 1000).toFixed(1)} km`}
-                </div>
-                <div className="mt-0.5 text-[11px] text-[#80868B]">
-                  {meta.tagline}
-                </div>
+                <span
+                  className="size-2 rounded-full"
+                  style={{
+                    background: active ? "rgba(255,255,255,0.9)" : meta.color,
+                  }}
+                />
+                {meta.short}
+                <span className={cx("tabular-nums", active ? "opacity-90" : "text-[#80868B]")}>
+                  {count}
+                </span>
               </button>
             );
           })}
         </div>
       )}
 
-      {/* Step-by-step directions for the active mode */}
-      {active && (
-        <div className="flex flex-col">
-          <div className="mb-1 flex items-baseline justify-between">
-            <span className="text-[13px] font-semibold text-[#202124]">
-              {formatTime(active.itinerary.startTime)} –{" "}
-              {formatTime(active.itinerary.endTime)}
-            </span>
-            <span className="text-[12px] text-[#5F6368]">
-              {Math.round(active.itinerary.walkDistance)} m walking
-            </span>
+      {error && <div className="text-[13px] text-[#D93025]">{error}</div>}
+
+      {/* Nothing at all — neither a direct route nor a transfer journey. */}
+      {results &&
+        results.length === 0 &&
+        (!fallback || fallback.length === 0) &&
+        !loading && (
+          <div className="rounded-xl bg-[#F8F9FA] px-3 py-4 text-center text-[13px] text-[#5F6368]">
+            No route between these places. Try nearby stops, or a stop on a
+            major corridor.
           </div>
-          <ol className="flex flex-col">
-            {active.itinerary.legs.map((leg, i) => {
-              const isWalk = leg.mode === "WALK";
-              const color = isWalk ? "#80868B" : MODE_META[active.mode].color;
-              return (
-                <li key={i} className="relative flex gap-3 pb-4 last:pb-0">
-                  <span className="flex w-5 flex-col items-center">
-                    <span
-                      className="z-10 mt-1 size-3 rounded-full border-2 border-white shadow"
-                      style={{ background: color }}
-                    />
-                    {i < active.itinerary.legs.length - 1 && (
-                      <span
-                        className={cx(
-                          "w-0.5 flex-1",
-                          isWalk ? "border-l-2 border-dotted border-[#BDC1C6]" : "",
-                        )}
-                        style={isWalk ? undefined : { background: color }}
-                      />
-                    )}
-                  </span>
-                  <div className="min-w-0 flex-1 pb-1">
-                    <div className="text-[13.5px] font-medium text-[#202124]">
-                      {isWalk
-                        ? `Walk ${Math.round(leg.distance)} m`
-                        : `${leg.route?.shortName ?? leg.mode} → ${leg.to.name}`}
-                    </div>
-                    <div className="text-[12px] text-[#5F6368]">
-                      {formatTime(leg.startTime)} · {formatDuration(leg.duration)}
-                      {!isWalk && leg.from.name ? ` · from ${leg.from.name}` : ""}
-                    </div>
-                  </div>
-                </li>
-              );
-            })}
-          </ol>
+        )}
+
+      {/* Operator-ranked direct-route cards. */}
+      {visible && visible.length > 0 && (
+        <div className="flex flex-col gap-2">
+          {visible.map((route) => (
+            <DirectRouteCard
+              key={route.routeId}
+              route={route}
+              active={route.routeId === selectedRouteId}
+              onClick={() => onSelectRoute(route.routeId)}
+            />
+          ))}
         </div>
       )}
+
+      {/* Transfer journeys (OTP) — only when no direct route exists. */}
+      {(!results || results.length === 0) &&
+        visibleFallback &&
+        visibleFallback.length > 0 && (
+          <div className="flex flex-col gap-2">
+            <div className="text-[11px] font-semibold tracking-wide text-[#5F6368] uppercase">
+              Requires a transfer
+            </div>
+            {visibleFallback.map((journey) => (
+              <JourneyCard
+                key={journey.id}
+                journey={journey}
+                active={journey.id === selectedJourneyId}
+                onClick={() => onSelectJourney(journey.id)}
+              />
+            ))}
+          </div>
+        )}
     </div>
+  );
+}
+
+function JourneyCard({
+  journey,
+  active,
+  onClick,
+}: {
+  journey: TransferJourney;
+  active: boolean;
+  onClick: () => void;
+}) {
+  const color = journey.primaryOperator?.color ?? "#5F6368";
+  const transitLegs = journey.legs.filter((l) => l.mode !== "WALK");
+  return (
+    <button
+      onClick={onClick}
+      className={cx(
+        "flex cursor-pointer flex-col gap-1.5 rounded-2xl border-2 p-3 text-left transition-colors",
+        active
+          ? "bg-white shadow-md"
+          : "border-transparent bg-[#F8F9FA] hover:bg-[#F1F3F4]",
+      )}
+      style={active ? { borderColor: color } : undefined}
+    >
+      <div className="flex items-center gap-1.5">
+        {transitLegs.map((leg, i) => (
+          <span key={i} className="flex items-center gap-1.5">
+            {i > 0 && <span className="text-[#9AA0A6]">→</span>}
+            <span
+              className="shrink-0 rounded-md px-1.5 py-0.5 text-[11.5px] font-bold text-white"
+              style={{ background: leg.operator?.color ?? "#5F6368" }}
+            >
+              {leg.routeShortName ?? leg.mode}
+            </span>
+          </span>
+        ))}
+        <span className="ml-auto text-[16px] font-bold text-[#202124]">
+          {formatMinutes(journey.totalSecs)}
+        </span>
+      </div>
+      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[11.5px] text-[#5F6368]">
+        <span>
+          {journey.transfers} transfer{journey.transfers === 1 ? "" : "s"}
+        </span>
+        {journey.walkMeters > 0 && (
+          <>
+            <span>·</span>
+            <span>{journey.walkMeters} m walk</span>
+          </>
+        )}
+        {journey.fareEtb != null && (
+          <span className="ml-auto font-semibold text-[#202124]">
+            ≈ {journey.fareEtb} ETB
+          </span>
+        )}
+      </div>
+    </button>
+  );
+}
+
+function DirectRouteCard({
+  route,
+  active,
+  onClick,
+}: {
+  route: DirectRoute;
+  active: boolean;
+  onClick: () => void;
+}) {
+  const color = route.operator?.color ?? "#5F6368";
+  const walk = route.walkToBoardMeters + route.walkFromAlightMeters;
+  const headwayMin = Math.round((route.waitSecs * 2) / 60);
+  return (
+    <button
+      onClick={onClick}
+      className={cx(
+        "flex cursor-pointer flex-col gap-1.5 rounded-2xl border-2 p-3 text-left transition-colors",
+        active ? "bg-white shadow-md" : "border-transparent bg-[#F8F9FA] hover:bg-[#F1F3F4]",
+      )}
+      style={active ? { borderColor: color } : undefined}
+    >
+      <div className="flex items-center gap-2">
+        <span
+          className="shrink-0 rounded-md px-2 py-0.5 text-[12px] font-bold text-white"
+          style={{ background: color }}
+        >
+          {route.shortName}
+        </span>
+        {route.operator && (
+          <span className="text-[11px] font-semibold tracking-wide uppercase" style={{ color }}>
+            {route.operator.name}
+          </span>
+        )}
+        {route.closed && (
+          <span className="rounded-full bg-[#FCE8E6] px-1.5 py-0.5 text-[10px] font-bold text-[#C5221F] uppercase">
+            Closed
+          </span>
+        )}
+        <span className="ml-auto text-[16px] font-bold text-[#202124]">
+          {formatMinutes(route.totalSecs)}
+        </span>
+      </div>
+
+      <div className="flex items-center gap-1.5 text-[12.5px] text-[#3C4043]">
+        <span className="min-w-0 truncate font-medium">{route.board.name}</span>
+        <span className="text-[#9AA0A6]">→</span>
+        <span className="min-w-0 truncate font-medium">{route.alight.name}</span>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[11.5px] text-[#5F6368]">
+        <span>{formatMinutes(route.inVehicleSecs)} ride</span>
+        <span>·</span>
+        <span>{route.numStops} stops</span>
+        {walk > 0 && (
+          <>
+            <span>·</span>
+            <span>{walk} m walk</span>
+          </>
+        )}
+        <span>·</span>
+        <span>every ~{headwayMin} min</span>
+        {route.fareEtb != null && (
+          <span className="ml-auto font-semibold text-[#202124]">
+            ≈ {route.fareEtb} ETB
+          </span>
+        )}
+      </div>
+
+      {/* Stop-by-stop list, shown when this result is selected. */}
+      {active && route.stops.length > 0 && (
+        <ol className="mt-1 flex flex-col border-t border-[#EEF1EA] pt-2">
+          {route.stops.map((stop, i) => {
+            const isFirst = i === 0;
+            const isLast = i === route.stops.length - 1;
+            const dotColor = isFirst ? "#1A73E8" : isLast ? "#D93025" : "#BDC1C6";
+            return (
+              <li key={`${stop.id}-${i}`} className="flex items-stretch gap-2.5">
+                <span className="flex w-3 flex-col items-center">
+                  {!isFirst && <span className="h-1.5 w-0.5 bg-[#DADCE0]" />}
+                  <span
+                    className="size-2.5 shrink-0 rounded-full border-2 border-white"
+                    style={{ background: dotColor, boxShadow: "0 0 0 1px #DADCE0" }}
+                  />
+                  {!isLast && <span className="w-0.5 flex-1 bg-[#DADCE0]" />}
+                </span>
+                <span
+                  className={cx(
+                    "py-0.5 text-[12px]",
+                    isFirst || isLast
+                      ? "font-semibold text-[#202124]"
+                      : "text-[#5F6368]",
+                  )}
+                >
+                  {stop.name}
+                </span>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+    </button>
   );
 }

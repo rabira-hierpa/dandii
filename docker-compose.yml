@@ -23,7 +23,13 @@ services:
       retries: 10
 
   otp:
-    image: opentripplanner/opentripplanner:latest
+    # PINNED by digest, not `:latest`. `:latest` tracks a rolling dev-2.x
+    # snapshot; when prod pulled a newer snapshot than the one that built the
+    # graph, every /plan request crashed with "Index N out of bounds for
+    # length 0" (empty internal collections) while local kept working on the
+    # older image. This digest is the known-good build. To upgrade: pull a new
+    # digest deliberately AND wipe the graph.obj volume so it rebuilds clean.
+    image: opentripplanner/opentripplanner@sha256:130408b5deb35a375173b404ba3c2a489f85105ba221093fe211266825ae9167
     container_name: otp-routing
     restart: unless-stopped
     ports:
@@ -32,16 +38,17 @@ services:
       # talks to it over the Docker network via OTP_URL=http://otp:8080.
       - "127.0.0.1:8081:8080"
     volumes:
-      # Contains et-addisababa-gtfs-2026.zip (no OSM extract — OTP runs
-      # transit-only, no street-level walk legs).
+      # Contains et-addisababa-gtfs-2026.zip (per-operator agencies) AND
+      # addis.osm.pbf (Addis street network, clipped from the Geofabrik
+      # Ethiopia extract to the transit bbox). The OSM layer gives OTP a real
+      # walk network: coordinate-based planning works, walk legs get street
+      # geometry (no more broken lines), and stop-to-stop transfers route over
+      # streets — required by the /api/directions OTP transfer fallback.
       - ./otp-data:/var/opentripplanner
-    # `:latest` for this image tracks a rolling dev-2.x snapshot, so its
-    # internal graph serialization format can change between pulls. Always
-    # rebuild from the GTFS zip rather than loading a graph.obj that may
-    # have been produced by a different snapshot — otherwise OTP refuses
-    # to start with a "serialization version id" mismatch. Once graph.obj
-    # is rebuilt here, restarts still take ~2 min unless you pin the image
-    # to a fixed digest (see README) and switch back to "--load --serve".
+    # Rebuild the graph from the GTFS zip on boot rather than loading a
+    # graph.obj that may have been produced by a different image. With the
+    # image now pinned, you can switch to "--load --serve" for fast restarts
+    # once a graph.obj built by THIS digest exists on the volume.
     command: "--build --save --serve"
 
   web:
@@ -63,6 +70,7 @@ services:
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
       SUPER_ADMIN_EMAIL: ${SUPER_ADMIN_EMAIL}
+      G4A_TAG: ${G4A_TAG}
 
 volumes:
   postgis_data:

@@ -19,11 +19,9 @@ import {
   CLOSED_ROUTE_COLOR,
   OPERATOR_CODES,
   OPERATOR_META,
+  type OperatorCode,
 } from "@/lib/operators";
-import {
-  recordSearch,
-  useRecentSearches,
-} from "@/lib/recent-searches";
+import { recordSearch, useRecentSearches } from "@/lib/recent-searches";
 import { useMapStore } from "@/stores/map-store";
 import { cx } from "@/utils/cx";
 import { AccountMenu } from "./account-menu";
@@ -48,19 +46,15 @@ import {
   ROUTE_LINE_COLOR,
   ROUTE_LINE_WIDTH,
 } from "./map-style";
-import {
-  MODE_META,
-  type ClassifiedItinerary,
-  type ModeKey,
-} from "./route-modes";
-import { decodePolyline } from "./polyline";
 import { RouteSheet } from "./route-sheet";
 import { StopMarkersLayer } from "./stop-markers-layer";
 import type {
+  DirectRoute,
   RouteDetail,
   RouteHoverPreview,
   RouteSearchResult,
   StopSearchResult,
+  TransferJourney,
 } from "./types";
 
 function boundsOf(coordinates: [number, number][]) {
@@ -167,6 +161,19 @@ export function PublicMap({ user, account }: PublicMapProps) {
   // bottom sheet has its own snap points.
   const [collapsed, setCollapsed] = useState(false);
 
+  // Agency filter for search results (empty = all agencies). Narrows the
+  // routes query server-side so the 8-result cap goes to the chosen agencies.
+  const [operatorFilter, setOperatorFilter] = useState<Set<OperatorCode>>(
+    new Set(),
+  );
+  const toggleOperatorFilter = (code: OperatorCode) =>
+    setOperatorFilter((prev) => {
+      const next = new Set(prev);
+      if (next.has(code)) next.delete(code);
+      else next.add(code);
+      return next;
+    });
+
   // Hamburger library rail: Saved / Recent / Fare submissions.
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [librarySection, setLibrarySection] = useState<LibrarySection | null>(
@@ -209,9 +216,25 @@ export function PublicMap({ user, account }: PublicMapProps) {
 
   // Directions state
   const [directionsResults, setDirectionsResults] = useState<
-    ClassifiedItinerary[] | null
+    DirectRoute[] | null
   >(null);
-  const [activeMode, setActiveMode] = useState<ModeKey | null>(null);
+  const [selectedDirectId, setSelectedDirectId] = useState<string | null>(null);
+  const [fallbackResults, setFallbackResults] = useState<
+    TransferJourney[] | null
+  >(null);
+  const [selectedJourneyId, setSelectedJourneyId] = useState<string | null>(
+    null,
+  );
+  const [dirOperators, setDirOperators] = useState<Set<OperatorCode>>(
+    () => new Set(),
+  );
+  const toggleDirOperator = (code: OperatorCode) =>
+    setDirOperators((prev) => {
+      const next = new Set(prev);
+      if (next.has(code)) next.delete(code);
+      else next.add(code);
+      return next;
+    });
   const [endpoints, setEndpoints] = useState<{
     from: DirectionsEndpoint;
     to: DirectionsEndpoint;
@@ -262,6 +285,15 @@ export function PublicMap({ user, account }: PublicMapProps) {
       ? routeDetail.detail
       : null;
   const hasDirections = directionsResults !== null && tab === "directions";
+  const selectedDirect = useMemo(
+    () =>
+      directionsResults?.find((r) => r.routeId === selectedDirectId) ?? null,
+    [directionsResults, selectedDirectId],
+  );
+  const selectedJourney = useMemo(
+    () => fallbackResults?.find((j) => j.id === selectedJourneyId) ?? null,
+    [fallbackResults, selectedJourneyId],
+  );
 
   // State B = search-driven two-column; State C = direct open, one column
   // with detail under the search bar (no empty results panel).
@@ -345,12 +377,16 @@ export function PublicMap({ user, account }: PublicMapProps) {
   useEffect(() => {
     if (detailSource === "direct") return;
     if (query.trim().length < 2) return;
+    const ops = [...operatorFilter];
     const handle = setTimeout(async () => {
-      const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+      const params = new URLSearchParams({ q: query });
+      if (ops.length > 0) params.set("operators", ops.join(","));
+      const res = await fetch(`/api/search?${params}`);
       setSearchResults(await res.json());
     }, 250);
     return () => clearTimeout(handle);
-  }, [query, detailSource]);
+    // operatorFilter is spread into `ops` so the effect re-runs on filter change.
+  }, [query, detailSource, operatorFilter]);
 
   // Load route detail when a route is selected.
   useEffect(() => {
@@ -369,7 +405,13 @@ export function PublicMap({ user, account }: PublicMapProps) {
         if (data.geojson?.coordinates?.length) {
           mapRef.current?.fitBounds(
             boundsOf(data.geojson.coordinates as [number, number][]),
-            { padding: fitPadding(panelLayoutRef.current, libraryOpenRef.current), duration: 800 },
+            {
+              padding: fitPadding(
+                panelLayoutRef.current,
+                libraryOpenRef.current,
+              ),
+              duration: 800,
+            },
           );
         }
       });
@@ -378,21 +420,27 @@ export function PublicMap({ user, account }: PublicMapProps) {
     };
   }, [selectedRouteId]);
 
-  // Fit the active itinerary whenever mode/results change.
+  // Fit the selected direct route or transfer journey (+ endpoints) on change.
   useEffect(() => {
-    if (!directionsResults || !activeMode) return;
-    const active = directionsResults.find((r) => r.mode === activeMode);
-    if (!active) return;
-    const coords = active.itinerary.legs.flatMap((leg) =>
-      leg.legGeometry ? decodePolyline(leg.legGeometry.points) : [],
-    );
-    if (coords.length > 0) {
-      mapRef.current?.fitBounds(boundsOf(coords), {
-        padding: fitPadding(panelLayout, libraryOpen),
-        duration: 700,
-      });
+    if (!endpoints) return;
+    let coords: [number, number][] | null = null;
+    if (selectedDirect) {
+      coords = [...(selectedDirect.shape.coordinates as [number, number][])];
+    } else if (selectedJourney) {
+      coords = selectedJourney.legs.flatMap(
+        (leg) => leg.shape.coordinates as [number, number][],
+      );
     }
-  }, [directionsResults, activeMode, panelLayout, libraryOpen]);
+    if (!coords) return;
+    coords.push(
+      [endpoints.from.lon, endpoints.from.lat],
+      [endpoints.to.lon, endpoints.to.lat],
+    );
+    mapRef.current?.fitBounds(boundsOf(coords), {
+      padding: fitPadding(panelLayout, libraryOpen),
+      duration: 700,
+    });
+  }, [selectedDirect, selectedJourney, endpoints, panelLayout, libraryOpen]);
 
   const selectRoute = (
     routeId: string,
@@ -599,41 +647,64 @@ export function PublicMap({ user, account }: PublicMapProps) {
     [detail],
   );
 
-  /** All alternatives, dimmed; the active mode is drawn on top, full color. */
-  const itinerariesGeojson = useMemo(() => {
-    if (!directionsResults) return null;
-    return {
-      type: "FeatureCollection",
-      features: directionsResults.flatMap((result) =>
-        result.itinerary.legs
-          .filter((leg) => leg.legGeometry)
-          .map((leg) => ({
-            type: "Feature" as const,
-            geometry: {
-              type: "LineString" as const,
-              coordinates: decodePolyline(leg.legGeometry!.points),
-            },
-            properties: {
-              mode: result.mode,
-              walk: leg.mode === "WALK",
-              color: MODE_META[result.mode].color,
-              colorDim: MODE_META[result.mode].colorDim,
-            },
-          })),
-      ),
-    } as GeoJSON.FeatureCollection;
-  }, [directionsResults]);
-
-  const activeFilter: FilterSpecification = [
-    "==",
-    ["get", "mode"],
-    activeMode ?? "",
-  ];
-  const inactiveFilter: FilterSpecification = [
-    "!=",
-    ["get", "mode"],
-    activeMode ?? "",
-  ];
+  /**
+   * The drawn journey: for a direct route, its ride line + two walk legs (to
+   * the boarding stop / from the alighting stop). For a transfer journey, each
+   * OTP leg (transit colored by operator, walk dotted).
+   */
+  const directionsGeojson = useMemo(() => {
+    if (selectedDirect && endpoints) {
+      const color = selectedDirect.operator?.color ?? "#1A73E8";
+      const features: GeoJSON.Feature[] = [
+        {
+          type: "Feature",
+          geometry: selectedDirect.shape,
+          properties: { kind: "transit", color },
+        },
+        {
+          type: "Feature",
+          geometry: {
+            type: "LineString",
+            coordinates: [
+              [endpoints.from.lon, endpoints.from.lat],
+              [selectedDirect.board.lon, selectedDirect.board.lat],
+            ],
+          },
+          properties: { kind: "walk" },
+        },
+        {
+          type: "Feature",
+          geometry: {
+            type: "LineString",
+            coordinates: [
+              [selectedDirect.alight.lon, selectedDirect.alight.lat],
+              [endpoints.to.lon, endpoints.to.lat],
+            ],
+          },
+          properties: { kind: "walk" },
+        },
+      ];
+      return {
+        type: "FeatureCollection",
+        features,
+      } as GeoJSON.FeatureCollection;
+    }
+    if (selectedJourney) {
+      const features: GeoJSON.Feature[] = selectedJourney.legs.map((leg) => ({
+        type: "Feature",
+        geometry: leg.shape,
+        properties:
+          leg.mode === "WALK"
+            ? { kind: "walk" }
+            : { kind: "transit", color: leg.operator?.color ?? "#1A73E8" },
+      }));
+      return {
+        type: "FeatureCollection",
+        features,
+      } as GeoJSON.FeatureCollection;
+    }
+    return null;
+  }, [selectedDirect, selectedJourney, endpoints]);
 
   const hasSearchResults =
     detailSource !== "direct" &&
@@ -648,7 +719,10 @@ export function PublicMap({ user, account }: PublicMapProps) {
 
   const exitDirections = () => {
     setDirectionsResults(null);
-    setActiveMode(null);
+    setSelectedDirectId(null);
+    setFallbackResults(null);
+    setSelectedJourneyId(null);
+    setDirOperators(new Set());
     setEndpoints(null);
   };
 
@@ -728,6 +802,40 @@ export function PublicMap({ user, account }: PublicMapProps) {
               />
             </div>
 
+            {/* Agency filter chips — narrow search results by operator. */}
+            {query.trim().length >= 2 && detailSource !== "direct" && (
+              <div className="flex flex-wrap gap-1.5">
+                {OPERATOR_CODES.map((code) => {
+                  const meta = OPERATOR_META[code];
+                  const active = operatorFilter.has(code);
+                  return (
+                    <button
+                      key={code}
+                      onClick={() => toggleOperatorFilter(code)}
+                      aria-pressed={active}
+                      className={cx(
+                        "flex cursor-pointer items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11.5px] font-medium transition-colors",
+                        active
+                          ? "border-transparent text-white"
+                          : "border-[#DADCE0] text-[#3D4A3F] hover:bg-[#F4F5F2]",
+                      )}
+                      style={active ? { background: meta.color } : undefined}
+                    >
+                      <span
+                        className="size-2 rounded-full"
+                        style={{
+                          background: active
+                            ? "rgba(255,255,255,0.9)"
+                            : meta.color,
+                        }}
+                      />
+                      {meta.short}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
             {/* Library section body (Saved / Recent / Submissions) */}
             {libraryOpen &&
               librarySection &&
@@ -798,9 +906,14 @@ export function PublicMap({ user, account }: PublicMapProps) {
                     )}
                   >
                     <span className="size-2.5 shrink-0 rounded-full border-[3px] border-[#1A73E8] bg-white" />
-                    <span className="min-w-0 truncate text-[13px] text-[#202124]">
+                    <span className="min-w-0 flex-1 truncate text-[13px] text-[#202124]">
                       {stop.name}
                     </span>
+                    {stop.count && stop.count > 1 && (
+                      <span className="shrink-0 rounded-full bg-[#F1F3F4] px-1.5 py-0.5 text-[10.5px] font-medium text-[#5F6368]">
+                        {stop.count} stops
+                      </span>
+                    )}
                   </button>
                 ))}
               </div>
@@ -885,9 +998,15 @@ export function PublicMap({ user, account }: PublicMapProps) {
             setFrom={setDirFrom}
             setTo={setDirTo}
             results={directionsResults}
-            activeMode={activeMode}
-            onActiveMode={setActiveMode}
+            fallback={fallbackResults}
+            operators={dirOperators}
+            onToggleOperator={toggleDirOperator}
+            selectedRouteId={selectedDirectId}
+            onSelectRoute={setSelectedDirectId}
+            selectedJourneyId={selectedJourneyId}
+            onSelectJourney={setSelectedJourneyId}
             onResults={setDirectionsResults}
+            onFallback={setFallbackResults}
             onEndpoints={setEndpoints}
           />
         )}
@@ -1003,52 +1122,50 @@ export function PublicMap({ user, account }: PublicMapProps) {
           onLine
         />
 
-        {/* Directions: dimmed alternatives below, active mode on top. */}
-        {itinerariesGeojson && hasDirections && (
-          <Source id="itineraries" type="geojson" data={itinerariesGeojson}>
+        {/* Directions: the selected route's ride line + dotted walk legs. */}
+        {directionsGeojson && hasDirections && (
+          <Source id="directions" type="geojson" data={directionsGeojson}>
             <Layer
-              id="itin-inactive"
+              id="dir-transit-casing"
               type="line"
-              filter={inactiveFilter}
+              filter={["==", ["get", "kind"], "transit"]}
               layout={{ "line-cap": "round", "line-join": "round" }}
-              paint={{
-                "line-color": ["get", "colorDim"],
-                "line-width": 4,
-                "line-opacity": 0.75,
-              }}
+              paint={{ "line-color": "#FFFFFF", "line-width": 9 }}
             />
             <Layer
-              id="itin-active-casing"
+              id="dir-transit"
               type="line"
-              filter={activeFilter}
+              filter={["==", ["get", "kind"], "transit"]}
               layout={{ "line-cap": "round", "line-join": "round" }}
-              paint={{ "line-color": "#FFFFFF", "line-width": 10 }}
+              paint={{ "line-color": ["get", "color"], "line-width": 5.5 }}
             />
+            {/* Walk legs to the boarding stop / from the alighting stop. */}
             <Layer
-              id="itin-active"
+              id="dir-walk"
               type="line"
-              filter={activeFilter}
+              filter={["==", ["get", "kind"], "walk"]}
               layout={{ "line-cap": "round", "line-join": "round" }}
               paint={{
-                "line-color": ["get", "color"],
-                "line-width": 5.5,
-                ...(activeMode ? {} : {}),
-              }}
-            />
-            {/* Walk segments of the active route drawn dotted. */}
-            <Layer
-              id="itin-active-walk"
-              type="line"
-              filter={["all", activeFilter, ["==", ["get", "walk"], true]]}
-              layout={{ "line-cap": "round", "line-join": "round" }}
-              paint={{
-                "line-color": "#FFFFFF",
-                "line-width": 2,
-                "line-dasharray": [0.1, 1.6],
+                "line-color": "#5F6368",
+                "line-width": 3,
+                "line-dasharray": [0.3, 1.8],
               }}
             />
           </Source>
         )}
+
+        {/* Board / alight stops on the selected direct route. */}
+        <StopMarkersLayer
+          id="dir-stops"
+          stops={
+            hasDirections && selectedDirect
+              ? [selectedDirect.board, selectedDirect.alight]
+              : []
+          }
+          variant="route"
+          visible={Boolean(hasDirections && selectedDirect)}
+          onLine
+        />
 
         {/* Endpoint markers — the blue dot system. */}
         {endpoints && hasDirections && (

@@ -18,7 +18,7 @@ export async function requireRole(allowed: AppRole[]) {
   }
   const role = (session.user.role ?? "user") as AppRole;
   if (!allowed.includes(role)) {
-    redirect("/");
+    redirect("/access-denied");
   }
   return { session, role };
 }

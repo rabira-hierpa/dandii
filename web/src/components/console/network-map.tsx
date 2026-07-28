@@ -1,17 +1,28 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import MapGl, { Layer, Source, type MapLayerMouseEvent } from "react-map-gl/maplibre";
+import MapGl, {
+  Layer,
+  Source,
+  type MapLayerMouseEvent,
+  type MapRef,
+} from "react-map-gl/maplibre";
+import type { FilterSpecification } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { createClosure, endClosure } from "@/actions/closures";
 import { RouteChip } from "@/components/console/route-chip";
 import {
   ADDIS_CENTER,
+  applyRouteHoverTransitions,
   BASEMAP_STYLE,
+  ROUTE_HOVER_CASING_WIDTH,
+  ROUTE_HOVER_LINE_WIDTH,
   ROUTE_LINE_COLOR,
   ROUTE_LINE_WIDTH,
 } from "@/components/map/map-style";
+import { StopMarkersLayer } from "@/components/map/stop-markers-layer";
+import type { StopSearchResult } from "@/components/map/types";
 import {
   CLOSED_ROUTE_COLOR,
   CLOSURE_REASON_LABELS,
@@ -42,6 +53,9 @@ interface NetworkMapProps {
   isMaintainer: boolean;
 }
 
+// Module-level so it persists across renders without a ref read during render.
+const hoverStopCache = new Map<string, StopSearchResult[]>();
+
 function toLocalInputValue(date: Date) {
   const offset = date.getTimezoneOffset();
   return new Date(date.getTime() - offset * 60_000).toISOString().slice(0, 16);
@@ -55,11 +69,19 @@ function fetchRouteGeojson() {
 
 export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
   const router = useRouter();
+  const mapRef = useRef<MapRef>(null);
   const { selectedRouteId, setSelectedRouteId } = useMapStore();
   const [geojson, setGeojson] = useState<GeoJSON.FeatureCollection | null>(null);
   const [panelSearch, setPanelSearch] = useState("");
   const [isPending, startTransition] = useTransition();
   const [feedback, setFeedback] = useState<string | null>(null);
+
+  // Hover preview — mirrors the public map so operators get the same feel.
+  const [hoveredRouteId, setHoveredRouteId] = useState<string | null>(null);
+  const [fetchedHoverStops, setFetchedHoverStops] = useState<{
+    routeId: string;
+    stops: StopSearchResult[];
+  } | null>(null);
 
   const [reason, setReason] = useState<ClosureReasonValue>(
     isMaintainer ? "MAINTENANCE" : "PUBLIC_HOLIDAY",
@@ -110,6 +132,69 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
       feature ? (feature.properties.routeId as string) : null,
     );
   };
+
+  // A hovered route is only highlighted while it isn't the selected one.
+  const effectiveHover =
+    hoveredRouteId && hoveredRouteId !== selectedRouteId ? hoveredRouteId : null;
+  const hoveredRoute = effectiveHover ? routeById.get(effectiveHover) : null;
+  // Derived (not stored) so there's no synchronous setState on hover-out.
+  const hoverStops: StopSearchResult[] = effectiveHover
+    ? (hoverStopCache.get(effectiveHover) ??
+      (fetchedHoverStops?.routeId === effectiveHover
+        ? fetchedHoverStops.stops
+        : []))
+    : [];
+
+  const onMouseMove = (event: MapLayerMouseEvent) => {
+    const routeId = event.features?.[0]?.properties?.routeId as
+      | string
+      | undefined;
+    const canvas = mapRef.current?.getCanvas();
+    if (canvas) canvas.style.cursor = routeId ? "pointer" : "";
+    setHoveredRouteId(routeId ?? null);
+  };
+
+  const onMouseLeave = () => {
+    const canvas = mapRef.current?.getCanvas();
+    if (canvas) canvas.style.cursor = "";
+    setHoveredRouteId(null);
+  };
+
+  const hoverFilter: FilterSpecification = [
+    "==",
+    ["get", "routeId"],
+    effectiveHover ?? "",
+  ];
+
+  // Fetch the hovered route's stops (cached). setState only in the async
+  // callback — the visible list is derived above, so no clear-effect needed.
+  useEffect(() => {
+    if (!effectiveHover || hoverStopCache.has(effectiveHover)) return;
+    let cancelled = false;
+    const handle = setTimeout(() => {
+      void fetch(`/api/routes/${effectiveHover}/hover`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data: { stops?: StopSearchResult[] } | null) => {
+          if (cancelled || !data?.stops) return;
+          hoverStopCache.set(effectiveHover, data.stops);
+          setFetchedHoverStops({ routeId: effectiveHover, stops: data.stops });
+        })
+        .catch(() => {});
+    }, 60);
+    return () => {
+      cancelled = true;
+      clearTimeout(handle);
+    };
+  }, [effectiveHover]);
+
+  // Smooth width/opacity transitions on the hover layers.
+  useEffect(() => {
+    const map = mapRef.current?.getMap();
+    if (!map) return;
+    const apply = () => applyRouteHoverTransitions(map);
+    if (map.isStyleLoaded()) apply();
+    else map.once("idle", apply);
+  }, [effectiveHover]);
 
   const availableReasons = isMaintainer ? MAINTAINER_REASONS : CLOSURE_REASONS;
 
@@ -187,13 +272,33 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
           </span>
         </div>
 
-        <div className="h-[62vh] min-h-100 overflow-hidden rounded-lg">
+        <div className="relative h-[62vh] min-h-100 overflow-hidden rounded-lg">
+          {hoveredRoute && (
+            <div className="pointer-events-none absolute top-2.5 left-2.5 z-10 flex max-w-[80%] items-center gap-2 rounded-lg border border-[#E2E6DE] bg-white/95 px-2.5 py-1.5 shadow-sm backdrop-blur">
+              <RouteChip
+                shortName={hoveredRoute.shortName}
+                operatorCode={hoveredRoute.operatorCode}
+                size="sm"
+              />
+              <span className="min-w-0 truncate text-[12.5px] font-medium text-[#1C2321]">
+                {hoveredRoute.longName}
+              </span>
+              {hoveredRoute.closure && (
+                <span className="shrink-0 rounded-full bg-[#FEE2E2] px-2 py-0.5 text-[10.5px] font-semibold text-[#991B1B]">
+                  Closed
+                </span>
+              )}
+            </div>
+          )}
           <MapGl
+            ref={mapRef}
             initialViewState={{ ...ADDIS_CENTER, zoom: 11 }}
             mapStyle={BASEMAP_STYLE}
             canvasContextAttributes={{ preserveDrawingBuffer: true }}
             interactiveLayerIds={["routes-open", "routes-closed"]}
             onClick={onMapClick}
+            onMouseMove={onMouseMove}
+            onMouseLeave={onMouseLeave}
             style={{ width: "100%", height: "100%" }}
           >
             {geojson && (
@@ -220,6 +325,32 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
                     "line-dasharray": [2, 1.5],
                   }}
                 />
+                {effectiveHover && (
+                  <Layer
+                    id="routes-hover-casing"
+                    type="line"
+                    filter={hoverFilter}
+                    layout={{ "line-cap": "round", "line-join": "round" }}
+                    paint={{
+                      "line-color": "#FFFFFF",
+                      "line-width": ROUTE_HOVER_CASING_WIDTH,
+                      "line-opacity": 0.95,
+                    }}
+                  />
+                )}
+                {effectiveHover && (
+                  <Layer
+                    id="routes-hover-line"
+                    type="line"
+                    filter={hoverFilter}
+                    layout={{ "line-cap": "round", "line-join": "round" }}
+                    paint={{
+                      "line-color": ROUTE_LINE_COLOR,
+                      "line-width": ROUTE_HOVER_LINE_WIDTH,
+                      "line-opacity": 1,
+                    }}
+                  />
+                )}
                 {selectedRouteId && (
                   <Layer
                     id="routes-selected"
@@ -235,6 +366,14 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
                 )}
               </Source>
             )}
+
+            <StopMarkersLayer
+              id="hover-stops"
+              stops={hoverStops}
+              variant="route"
+              visible={Boolean(effectiveHover && hoverStops.length)}
+              onLine
+            />
           </MapGl>
         </div>
         <div className="mt-2 text-[11.5px] text-[#7E9182]">

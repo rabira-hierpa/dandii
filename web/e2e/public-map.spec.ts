@@ -126,4 +126,34 @@ test.describe("desktop chrome", () => {
       page.getByRole("combobox", { name: "Choose destination" }).first(),
     ).toBeAttached();
   });
+
+  // Regression: react-aria ComboBox cleared a selected endpoint when the other
+  // was edited, because the selected stop was filtered out of `items` (an empty
+  // collection whose selectedKey couldn't be resolved). directions-panel.tsx.
+  test("selecting a start survives typing in the destination", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    await page.getByRole("button", { name: /^directions$/i }).click();
+
+    // The panel renders twice (mobile sheet + desktop). Target the visible one.
+    const start = page.locator(
+      'input[role="combobox"][aria-label="Choose start point"]:visible',
+    );
+    const dest = page.locator(
+      'input[role="combobox"][aria-label="Choose destination"]:visible',
+    );
+
+    await start.click();
+    await start.pressSequentially("Megen", { delay: 40 });
+    await page.getByRole("option").first().click();
+    await expect(start).not.toHaveValue("");
+    const startValue = await start.inputValue();
+
+    await dest.click();
+    await dest.pressSequentially("Bole", { delay: 40 });
+
+    // The bug wiped the start the moment the destination was typed.
+    await expect(start).toHaveValue(startValue);
+  });
 });

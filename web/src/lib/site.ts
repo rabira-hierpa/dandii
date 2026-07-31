@@ -24,6 +24,8 @@ export const SITE = {
     "Addis Ababa bus map",
     "Addis Ababa minibus",
     "Addis Ababa taxi",
+    "Addis Ababa public transport",
+    "Lada taxi",
     "Anbessa bus",
     "Sheger bus",
     "Addis Light Rail",
@@ -34,5 +36,7 @@ export const SITE = {
     "Addis Ababa route fares",
     "woyala",
     "minibus taxi Addis",
+    "public transport Addis",
+    "public transport map Addis",
   ],
 } as const;

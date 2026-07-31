@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import { useRouter } from "next/navigation";
 import MapGl, {
   Layer,
@@ -72,7 +79,9 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
   const router = useRouter();
   const mapRef = useRef<MapRef>(null);
   const { selectedRouteId, setSelectedRouteId } = useMapStore();
-  const [geojson, setGeojson] = useState<GeoJSON.FeatureCollection | null>(null);
+  const [geojson, setGeojson] = useState<GeoJSON.FeatureCollection | null>(
+    null,
+  );
   const [panelSearch, setPanelSearch] = useState("");
   const [isPending, startTransition] = useTransition();
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -136,7 +145,9 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
 
   // A hovered route is only highlighted while it isn't the selected one.
   const effectiveHover =
-    hoveredRouteId && hoveredRouteId !== selectedRouteId ? hoveredRouteId : null;
+    hoveredRouteId && hoveredRouteId !== selectedRouteId
+      ? hoveredRouteId
+      : null;
   const hoveredRoute = effectiveHover ? routeById.get(effectiveHover) : null;
   // Derived (not stored) so there's no synchronous setState on hover-out.
   const hoverStops: StopSearchResult[] = effectiveHover
@@ -213,7 +224,9 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
         });
         if (result.ok) {
           ga.consoleCloseRoute(selected.id, reason);
-          setFeedback(`${selected.shortName} closed · ${CLOSURE_REASON_LABELS[reason]}`);
+          setFeedback(
+            `${selected.shortName} closed · ${CLOSURE_REASON_LABELS[reason]}`,
+          );
           setNote("");
           await loadGeojson();
           router.refresh();
@@ -275,7 +288,7 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
           </span>
         </div>
 
-        <div className="relative h-[62vh] min-h-100 overflow-hidden rounded-lg">
+        <div className="relative h-[90vh] min-h-100 overflow-hidden rounded-lg">
           {hoveredRoute && (
             <div className="pointer-events-none absolute top-2.5 left-2.5 z-10 flex max-w-[80%] items-center gap-2 rounded-lg border border-[#E2E6DE] bg-white/95 px-2.5 py-1.5 shadow-sm backdrop-blur">
               <RouteChip

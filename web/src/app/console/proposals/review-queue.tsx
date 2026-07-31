@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { CheckCircle, MessageQuestionCircle, X } from "@untitledui/icons";
 import { reviewProposal } from "@/actions/fare-proposals";
 import { RouteChip } from "@/components/console/route-chip";
+import { ga } from "@/lib/gtag";
 import type { OperatorCode } from "@/lib/operators";
 
 export interface ProposalItem {
@@ -65,6 +66,7 @@ function ProposalCard({
         reviewNote: note.trim() || undefined,
       });
       if (res.ok) {
+        ga.consoleReviewFare(proposal.id, decision);
         onDecided(decision, proposal.id);
         router.refresh();
       } else {

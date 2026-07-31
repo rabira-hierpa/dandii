@@ -5,6 +5,7 @@ import { Button as AriaButton } from "react-aria-components";
 import { LogOut01, User01, Building07, BankNote02 } from "@untitledui/icons";
 import { Dropdown } from "@/components/base/dropdown/dropdown";
 import { authClient } from "@/lib/auth-client";
+import { ga } from "@/lib/gtag";
 
 interface AccountMenuProps {
   user: { name: string; email: string; hasConsoleAccess: boolean };
@@ -31,6 +32,7 @@ export function AccountMenu({ user, unseenCount }: AccountMenuProps) {
   return (
     <Dropdown.Root>
       <AriaButton
+        onPress={() => ga.openAccountMenu()}
         aria-label={
           unseenCount > 0
             ? `Account — ${unseenCount} submission updates`

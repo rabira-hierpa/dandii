@@ -1,6 +1,7 @@
 "use client";
 
 import { X as CloseX } from "@untitledui/icons";
+import { ga } from "@/lib/gtag";
 import { OPERATOR_META, OPERATOR_CODES } from "@/lib/operators";
 import { useMapStore } from "@/stores/map-store";
 import { cx } from "@/utils/cx";
@@ -48,7 +49,10 @@ export function LayersPanel() {
             return (
               <button
                 key={code}
-                onClick={() => toggleOperator(code)}
+                onClick={() => {
+                  ga.toggleLayer(code, !visible);
+                  toggleOperator(code);
+                }}
                 role="switch"
                 aria-checked={visible}
                 className="flex cursor-pointer items-center gap-3 rounded-xl px-2.5 py-2.5 text-left hover:bg-[#F8F9FA]"

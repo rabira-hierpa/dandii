@@ -2,6 +2,12 @@
 
 All notable changes to Dandii are documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- **Google Analytics 4.** Site-wide gtag via `@next/third-parties` (reads `G4A_TAG`), plus curated custom events for the essential actions — public: search (`search_term`), route/stop select, directions request, agency filter, transit-layer toggle, account menu, my-location, save route, fare-proposal submit; console: route select, close/reopen route, fare review. Events run through one helper (`lib/gtag.ts`).
+
 ## [1.1.0] — 2026-07-29
 
 ### Added

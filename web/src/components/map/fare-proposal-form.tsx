@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { submitProposal } from "@/actions/fare-proposals";
 import type { SubmitProposalInput } from "@/actions/proposal-schema";
+import { ga } from "@/lib/gtag";
 import { cx } from "@/utils/cx";
 import type { RouteDetail } from "./types";
 
@@ -106,8 +107,10 @@ export function FareProposalForm({
     }
     startTransition(async () => {
       const res = await submitProposal(input);
-      if (res.ok) setDone(true);
-      else setError(res.error);
+      if (res.ok) {
+        ga.fareProposalSubmit(routeId);
+        setDone(true);
+      } else setError(res.error);
     });
   };
 

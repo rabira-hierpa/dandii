@@ -23,6 +23,7 @@ import {
 } from "@/components/map/map-style";
 import { StopMarkersLayer } from "@/components/map/stop-markers-layer";
 import type { StopSearchResult } from "@/components/map/types";
+import { ga } from "@/lib/gtag";
 import {
   CLOSED_ROUTE_COLOR,
   CLOSURE_REASON_LABELS,
@@ -128,9 +129,9 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
 
   const onMapClick = (event: MapLayerMouseEvent) => {
     const feature = event.features?.[0];
-    setSelectedRouteId(
-      feature ? (feature.properties.routeId as string) : null,
-    );
+    const routeId = feature ? (feature.properties.routeId as string) : null;
+    if (routeId) ga.consoleSelectRoute(routeId);
+    setSelectedRouteId(routeId);
   };
 
   // A hovered route is only highlighted while it isn't the selected one.
@@ -211,6 +212,7 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
           endsAt: new Date(endsAt),
         });
         if (result.ok) {
+          ga.consoleCloseRoute(selected.id, reason);
           setFeedback(`${selected.shortName} closed · ${CLOSURE_REASON_LABELS[reason]}`);
           setNote("");
           await loadGeojson();
@@ -230,6 +232,7 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
       try {
         const result = await endClosure(closureId);
         if (result.ok) {
+          if (selectedRouteId) ga.consoleReopenRoute(selectedRouteId);
           setFeedback(`${shortName} reopened`);
           await loadGeojson();
           router.refresh();
@@ -507,7 +510,10 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
             {panelRoutes.map((route) => (
               <button
                 key={route.id}
-                onClick={() => setSelectedRouteId(route.id)}
+                onClick={() => {
+                  ga.consoleSelectRoute(route.id);
+                  setSelectedRouteId(route.id);
+                }}
                 className={cx(
                   "flex cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-2 text-left",
                   selectedRouteId === route.id

@@ -6,6 +6,7 @@ import { SwitchVertical01 } from "@untitledui/icons";
 import { Select } from "@/components/base/select/select";
 import type { SelectItemType } from "@/components/base/select/select-shared";
 import { OPERATOR_CODES, OPERATOR_META, type OperatorCode } from "@/lib/operators";
+import { ga } from "@/lib/gtag";
 import { useMapStore } from "@/stores/map-store";
 import { cx } from "@/utils/cx";
 import type { DirectRoute, StopSearchResult, TransferJourney } from "./types";
@@ -177,6 +178,7 @@ export function DirectionsPanel({
 
   const plan = async () => {
     if (!from || !to) return;
+    ga.directionsRequest(from.id, to.id);
     setLoading(true);
     setError(null);
     onResults(null);

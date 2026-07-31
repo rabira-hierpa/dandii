@@ -37,6 +37,7 @@ import {
 } from "./library-rail";
 import { BlueDotMarker } from "./markers";
 import { DandiiLogo } from "@/components/foundations/logo/dandii-logo";
+import { ga } from "@/lib/gtag";
 import {
   ADDIS_CENTER,
   applyRouteHoverTransitions,
@@ -171,6 +172,7 @@ export function PublicMap({ user, account }: PublicMapProps) {
       const next = new Set(prev);
       if (next.has(code)) next.delete(code);
       else next.add(code);
+      ga.filterAgency("explore", [...next]);
       return next;
     });
 
@@ -233,6 +235,7 @@ export function PublicMap({ user, account }: PublicMapProps) {
       const next = new Set(prev);
       if (next.has(code)) next.delete(code);
       else next.add(code);
+      ga.filterAgency("directions", [...next]);
       return next;
     });
   const [endpoints, setEndpoints] = useState<{
@@ -383,6 +386,7 @@ export function PublicMap({ user, account }: PublicMapProps) {
       if (ops.length > 0) params.set("operators", ops.join(","));
       const res = await fetch(`/api/search?${params}`);
       setSearchResults(await res.json());
+      ga.search(query);
     }, 250);
     return () => clearTimeout(handle);
     // operatorFilter is spread into `ops` so the effect re-runs on filter change.
@@ -448,6 +452,7 @@ export function PublicMap({ user, account }: PublicMapProps) {
   ) => {
     const fromSearch = Boolean(opts.fromSearch);
     if (fromSearch && query.trim().length >= 2) recordSearch(query);
+    ga.selectRoute(routeId, operatorByRouteId.get(routeId));
     const source = fromSearch ? "search" : "direct";
     detailSourceRef.current = source;
     setSelectedStop(null);
@@ -471,6 +476,7 @@ export function PublicMap({ user, account }: PublicMapProps) {
   ) => {
     const fromSearch = Boolean(opts.fromSearch);
     if (fromSearch && query.trim().length >= 2) recordSearch(query);
+    ga.selectStop(stop.id);
     const source = fromSearch ? "search" : "direct";
     detailSourceRef.current = source;
     setSelectedRouteId(null);
@@ -493,6 +499,7 @@ export function PublicMap({ user, account }: PublicMapProps) {
       const next = new Set(prev);
       if (next.has(routeId)) next.delete(routeId);
       else next.add(routeId);
+      ga.saveRoute(routeId, next.has(routeId));
       return next;
     });
     void toggleSavedRoute({ routeId }).then((res) => {
@@ -583,6 +590,7 @@ export function PublicMap({ user, account }: PublicMapProps) {
   }, [previewRoute, selectedRouteId]);
 
   const onLocate = (coords: { lat: number; lon: number }) => {
+    ga.useMyLocation();
     setMyLocation(coords);
     mapRef.current?.flyTo({
       center: [coords.lon, coords.lat],

@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { IBM_Plex_Mono, Inter, Poppins } from "next/font/google";
+import { GoogleAnalytics } from "@next/third-parties/google";
 import { JsonLd } from "@/components/seo/json-ld";
 import { SITE, siteUrl } from "@/lib/site";
 import "@/styles/globals.css";
@@ -111,6 +112,7 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const gaId = process.env.G4A_TAG;
   return (
     <html
       lang="en"
@@ -123,6 +125,7 @@ export default function RootLayout({
       <body className="flex min-h-full flex-col">
         <JsonLd />
         {children}
+        {gaId ? <GoogleAnalytics gaId={gaId} /> : null}
       </body>
     </html>
   );

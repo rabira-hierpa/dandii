@@ -283,6 +283,70 @@ model RouteAssignment {
 }
 
 // ---------------------------------------------------------------------------
+// Stop-graph analysis — a derived network graph (nodes = stops, edges = direct
+// hops) used for centrality/interchange analysis. Rebuilt from a GTFS feed by
+// an offline job; each run is a StopGraphBuild snapshot so results stay
+// reproducible and comparable across feed versions.
+// ---------------------------------------------------------------------------
+
+enum StopGraphBuildStatus {
+  READY
+  FAILED
+}
+
+model StopGraphBuild {
+  id            String               @id @default(cuid())
+  builtAt       DateTime             @default(now())
+  /// GTFS calendar window this graph was built for (YYYYMMDD).
+  calendarStart String
+  calendarEnd   String
+  /// Feed the build read from, for traceability.
+  sourcePath    String
+  nodeCount     Int                  @default(0)
+  edgeCount     Int                  @default(0)
+  status        StopGraphBuildStatus @default(READY)
+  error         String?
+
+  nodes StopGraphNode[]
+  edges StopGraphEdge[]
+
+  @@map("stop_graph_build")
+}
+
+model StopGraphNode {
+  id      String         @id @default(cuid())
+  buildId String
+  build   StopGraphBuild @relation(fields: [buildId], references: [id], onDelete: Cascade)
+  stopId  String
+  /// Number of distinct stops reachable in one hop.
+  degree  Int
+  /// Betweenness centrality — how often this stop sits on shortest paths.
+  betweenness Float @default(0)
+
+  @@unique([buildId, stopId])
+  @@index([buildId, betweenness])
+  @@map("stop_graph_node")
+}
+
+model StopGraphEdge {
+  id            String         @id @default(cuid())
+  buildId       String
+  build         StopGraphBuild @relation(fields: [buildId], references: [id], onDelete: Cascade)
+  fromStopId    String
+  toStopId      String
+  /// Median observed run time for this hop.
+  travelTimeSec Float
+  /// Trips per service day traversing this hop.
+  frequency     Int
+
+  @@unique([buildId, fromStopId, toStopId])
+  @@index([buildId])
+  @@index([fromStopId])
+  @@index([toStopId])
+  @@map("stop_graph_edge")
+}
+
+// ---------------------------------------------------------------------------
 // Crowdsourced fare registry (design doc: rz-dev-design-20260721)
 // ---------------------------------------------------------------------------
 

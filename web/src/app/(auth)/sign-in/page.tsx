@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { TransitBackdrop } from "@/components/foundations/transit-backdrop";
 import { SignInCard } from "./sign-in-card";
 
 export const metadata = {
@@ -7,10 +8,12 @@ export const metadata = {
 
 export default function SignInPage() {
   return (
-    <main className="flex flex-1 items-center justify-center bg-secondary px-4">
-      <Suspense>
-        <SignInCard />
-      </Suspense>
-    </main>
+    <TransitBackdrop>
+      <div className="relative z-1 mx-auto flex w-full max-w-110 flex-col justify-center px-6 py-16 max-sm:px-5 max-sm:py-12">
+        <Suspense>
+          <SignInCard />
+        </Suspense>
+      </div>
+    </TransitBackdrop>
   );
 }

@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { BADGE_LABELS, levelForPoints } from "@/lib/points";
-import { formatProposedLabel } from "@/lib/proposed-label";
+import { formatBaselineLabel, formatProposedLabel } from "@/lib/proposed-label";
 
 export interface SavedRouteItem {
   routeId: string;
@@ -11,10 +11,16 @@ export interface SavedRouteItem {
 
 export interface SubmissionItem {
   id: string;
+  routeId: string;
   routeShortName: string;
   routeLongName: string;
+  operatorCode: string | null;
   status: "PENDING" | "APPROVED" | "REJECTED" | "SUPERSEDED";
   proposedLabel: string;
+  /** The fare on record when this was submitted; null = none on record. */
+  baselineLabel: string | null;
+  /** The rider's own note explaining the correction. */
+  note: string | null;
   reviewNote: string | null;
   decidedAt: string | null;
   createdAt: string;
@@ -70,14 +76,25 @@ export async function getAccountData(userId: string): Promise<AccountData> {
       take: 50,
       select: {
         id: true,
+        routeId: true,
         status: true,
+        note: true,
         reviewNote: true,
         decidedAt: true,
         createdAt: true,
         proposedKind: true,
         proposedFlatEtb: true,
         proposedTiers: true,
-        route: { select: { shortName: true, longName: true } },
+        baselineKind: true,
+        baselineFlatEtb: true,
+        baselineTiers: true,
+        route: {
+          select: {
+            shortName: true,
+            longName: true,
+            assignment: { select: { operator: { select: { code: true } } } },
+          },
+        },
       },
     }),
     prisma.user.findUnique({
@@ -128,10 +145,14 @@ export async function getAccountData(userId: string): Promise<AccountData> {
     })),
     submissions: proposals.map((p) => ({
       id: p.id,
+      routeId: p.routeId,
       routeShortName: p.route.shortName,
       routeLongName: p.route.longName,
+      operatorCode: p.route.assignment?.operator.code ?? null,
       status: p.status as SubmissionItem["status"],
       proposedLabel: formatProposedLabel(p),
+      baselineLabel: formatBaselineLabel(p),
+      note: p.note,
       reviewNote: p.reviewNote,
       decidedAt: p.decidedAt?.toISOString() ?? null,
       createdAt: p.createdAt.toISOString(),

@@ -26,6 +26,7 @@ export default async function ProfilePage() {
   const role = (session.user.role ?? "user") as AppRole;
   const hasConsoleAccess = CONSOLE_ROLES.includes(role);
   const account = await getAccountData(session.user.id);
+  const contributions = account.contributions;
 
   const approved = account.submissions.filter(
     (s) => s.status === "APPROVED",
@@ -58,6 +59,81 @@ export default async function ProfilePage() {
             </p>
           </div>
         </div>
+
+        {/* My Contributions — the rewards ladder (R1). */}
+        <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-black/5">
+          <div className="flex items-baseline justify-between gap-3">
+            <div>
+              <h2 className="text-[15px] font-semibold text-[#202124]">
+                My Contributions
+              </h2>
+              <p className="mt-0.5 text-[12.5px] text-[#5F6368]">
+                Level {contributions.level} ·{" "}
+                <span className="font-semibold text-[#15803D]">
+                  {contributions.title}
+                </span>
+              </p>
+            </div>
+            <div className="text-right">
+              <div className="text-[26px] leading-none font-bold tabular-nums text-[#202124]">
+                {contributions.points}
+              </div>
+              <div className="text-[11.5px] text-[#5F6368]">points</div>
+            </div>
+          </div>
+
+          {/* Progress to the next level */}
+          <div className="mt-3">
+            <div
+              className="h-2 w-full overflow-hidden rounded-full bg-[#E8F0EA]"
+              role="progressbar"
+              aria-valuenow={contributions.percent}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-label={`Progress to level ${contributions.level + 1}`}
+            >
+              <div
+                className="h-full rounded-full bg-[#15803D] transition-[width] duration-500"
+                style={{ width: `${contributions.percent}%` }}
+              />
+            </div>
+            <p className="mt-1.5 text-[12px] text-[#5F6368]">
+              {contributions.toNext != null
+                ? `${contributions.toNext} points to level ${contributions.level + 1}`
+                : "Top level reached — thank you for keeping Addis fares accurate."}
+            </p>
+          </div>
+
+          {/* Impact line: what these contributions actually did */}
+          {contributions.approvedCount > 0 && (
+            <p className="mt-3 rounded-lg bg-[#F3F8F1] px-3 py-2 text-[12.5px] text-[#15803D]">
+              {contributions.approvedCount} approved{" "}
+              {contributions.approvedCount === 1 ? "fare is" : "fares are"} live
+              on {contributions.routesImproved}{" "}
+              {contributions.routesImproved === 1 ? "route" : "routes"}.
+            </p>
+          )}
+          {contributions.approvedCount === 0 && (
+            <p className="mt-3 text-[12.5px] text-[#5F6368]">
+              Suggest a fare correction from any route to start earning points.
+            </p>
+          )}
+
+          {/* Badges */}
+          {contributions.badges.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {contributions.badges.map((b) => (
+                <span
+                  key={b.badge}
+                  title={`Earned ${new Date(b.earnedAt).toLocaleDateString()}`}
+                  className="rounded-full bg-[#FEF3C7] px-2.5 py-1 text-[11.5px] font-semibold text-[#92400E]"
+                >
+                  {b.label}
+                </span>
+              ))}
+            </div>
+          )}
+        </section>
 
         {/* Contribution summary */}
         <div className="grid grid-cols-3 gap-3">

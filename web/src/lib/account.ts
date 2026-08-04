@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
-import { formatProposedLabel } from "@/lib/proposed-label";
+import { BADGE_LABELS, computeStreakWeeks, levelForPoints } from "@/lib/points";
+import { formatBaselineLabel, formatProposedLabel } from "@/lib/proposed-label";
 
 export interface SavedRouteItem {
   routeId: string;
@@ -10,13 +11,41 @@ export interface SavedRouteItem {
 
 export interface SubmissionItem {
   id: string;
+  routeId: string;
   routeShortName: string;
   routeLongName: string;
+  operatorCode: string | null;
   status: "PENDING" | "APPROVED" | "REJECTED" | "SUPERSEDED";
   proposedLabel: string;
+  /** The fare on record when this was submitted; null = none on record. */
+  baselineLabel: string | null;
+  /** The rider's own note explaining the correction. */
+  note: string | null;
   reviewNote: string | null;
   decidedAt: string | null;
   createdAt: string;
+}
+
+/** Contributor rewards summary shown on "My Contributions" (R1). */
+export interface ContributionStats {
+  points: number;
+  level: number;
+  title: string;
+  titleKey: string;
+  /** Points needed for the next level; null at max level. */
+  nextAt: number | null;
+  toNext: number | null;
+  /** 0-100 progress through the current level. */
+  percent: number;
+  approvedCount: number;
+  pendingCount: number;
+  /** Distinct routes the user has an approved fare on (impact line). */
+  routesImproved: number;
+  badges: { badge: string; label: string; earnedAt: string }[];
+  /** R2: consecutive weeks with an approved contribution. */
+  streakWeeks: number;
+  /** R2: whether the user appears on the public leaderboard. */
+  leaderboardOptIn: boolean;
 }
 
 export interface AccountData {
@@ -24,13 +53,15 @@ export interface AccountData {
   submissions: SubmissionItem[];
   /** Submissions decided after the user last viewed the list (D2 badge). */
   unseenCount: number;
+  contributions: ContributionStats;
 }
 
 /** Format a proposed fare for list UIs (profile, account menu, library rail). */
 export { formatProposedLabel } from "@/lib/proposed-label";
 
 export async function getAccountData(userId: string): Promise<AccountData> {
-  const [saved, proposals, user] = await Promise.all([
+  const [saved, proposals, user, badges, approvedRoutes, approvedDates] =
+    await Promise.all([
     prisma.savedRoute.findMany({
       where: { userId },
       orderBy: { createdAt: "desc" },
@@ -51,19 +82,50 @@ export async function getAccountData(userId: string): Promise<AccountData> {
       take: 50,
       select: {
         id: true,
+        routeId: true,
         status: true,
+        note: true,
         reviewNote: true,
         decidedAt: true,
         createdAt: true,
         proposedKind: true,
         proposedFlatEtb: true,
         proposedTiers: true,
-        route: { select: { shortName: true, longName: true } },
+        baselineKind: true,
+        baselineFlatEtb: true,
+        baselineTiers: true,
+        route: {
+          select: {
+            shortName: true,
+            longName: true,
+            assignment: { select: { operator: { select: { code: true } } } },
+          },
+        },
       },
     }),
     prisma.user.findUnique({
       where: { id: userId },
-      select: { lastSubmissionsViewedAt: true },
+      select: {
+        lastSubmissionsViewedAt: true,
+        points: true,
+        leaderboardOptIn: true,
+      },
+    }),
+    prisma.userBadge.findMany({
+      where: { userId },
+      orderBy: { earnedAt: "asc" },
+      select: { badge: true, earnedAt: true },
+    }),
+    prisma.fareProposal.findMany({
+      where: { submittedById: userId, status: "APPROVED" },
+      select: { routeId: true },
+      distinct: ["routeId"],
+    }),
+    // Every approved submission date — the streak spans the user's whole
+    // history, so it can't be read off the 50-row submissions page.
+    prisma.fareProposal.findMany({
+      where: { submittedById: userId, status: "APPROVED" },
+      select: { createdAt: true },
     }),
   ]);
 
@@ -71,6 +133,27 @@ export async function getAccountData(userId: string): Promise<AccountData> {
   const unseenCount = proposals.filter(
     (p) => p.decidedAt != null && p.decidedAt > lastViewed,
   ).length;
+
+  const progress = levelForPoints(user?.points ?? 0);
+  const contributions: ContributionStats = {
+    points: progress.points,
+    level: progress.level,
+    title: progress.title,
+    titleKey: progress.titleKey,
+    nextAt: progress.nextAt,
+    toNext: progress.toNext,
+    percent: progress.percent,
+    approvedCount: proposals.filter((p) => p.status === "APPROVED").length,
+    pendingCount: proposals.filter((p) => p.status === "PENDING").length,
+    routesImproved: approvedRoutes.length,
+    badges: badges.map((b) => ({
+      badge: b.badge,
+      label: BADGE_LABELS[b.badge] ?? b.badge,
+      earnedAt: b.earnedAt.toISOString(),
+    })),
+    streakWeeks: computeStreakWeeks(approvedDates.map((d) => d.createdAt)),
+    leaderboardOptIn: user?.leaderboardOptIn ?? false,
+  };
 
   return {
     savedRoutes: saved.map((s) => ({
@@ -81,14 +164,19 @@ export async function getAccountData(userId: string): Promise<AccountData> {
     })),
     submissions: proposals.map((p) => ({
       id: p.id,
+      routeId: p.routeId,
       routeShortName: p.route.shortName,
       routeLongName: p.route.longName,
+      operatorCode: p.route.assignment?.operator.code ?? null,
       status: p.status as SubmissionItem["status"],
       proposedLabel: formatProposedLabel(p),
+      baselineLabel: formatBaselineLabel(p),
+      note: p.note,
       reviewNote: p.reviewNote,
       decidedAt: p.decidedAt?.toISOString() ?? null,
       createdAt: p.createdAt.toISOString(),
     })),
     unseenCount,
+    contributions,
   };
 }

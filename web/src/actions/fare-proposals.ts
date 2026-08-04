@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { Prisma } from "@/generated/prisma/client";
 import { applyFareChange, type FareData } from "@/lib/fare-write";
+import { awardPoints, deriveBadges, POINTS } from "@/lib/points";
 import { prisma } from "@/lib/prisma";
 import { getSession, requirePermission } from "@/lib/session";
 import {
@@ -86,30 +87,43 @@ export async function submitProposal(
   });
 
   try {
-    const proposal = await prisma.fareProposal.create({
-      data: {
-        routeId: data.routeId,
-        submittedById: session.user.id,
-        note: data.note,
-        proposedKind: data.kind,
-        proposedFlatEtb: data.kind === "FLAT" ? data.flatAmountEtb : null,
-        proposedTiers:
-          data.kind === "TIERED"
-            ? (data.tiers as unknown as Prisma.InputJsonValue)
+    // Create + award in one transaction so points can never drift from the
+    // proposals that earned them (rewards R1).
+    const proposal = await prisma.$transaction(async (tx) => {
+      const created = await tx.fareProposal.create({
+        data: {
+          routeId: data.routeId,
+          submittedById: session.user.id,
+          note: data.note,
+          proposedKind: data.kind,
+          proposedFlatEtb: data.kind === "FLAT" ? data.flatAmountEtb : null,
+          proposedTiers:
+            data.kind === "TIERED"
+              ? (data.tiers as unknown as Prisma.InputJsonValue)
+              : Prisma.JsonNull,
+          baselineKind: baseline?.kind ?? null,
+          baselineFlatEtb: baseline?.flatAmountEtb ?? null,
+          baselineTiers: baseline
+            ? (baseline.tiers.map((t) => ({
+                label: t.label,
+                fromKm: t.fromKm,
+                toKm: t.toKm,
+                amountEtb: t.amountEtb.toNumber(),
+              })) as unknown as Prisma.InputJsonValue)
             : Prisma.JsonNull,
-        baselineKind: baseline?.kind ?? null,
-        baselineFlatEtb: baseline?.flatAmountEtb ?? null,
-        baselineTiers: baseline
-          ? (baseline.tiers.map((t) => ({
-              label: t.label,
-              fromKm: t.fromKm,
-              toKm: t.toKm,
-              amountEtb: t.amountEtb.toNumber(),
-            })) as unknown as Prisma.InputJsonValue)
-          : Prisma.JsonNull,
-      },
+        },
+      });
+      // Small nod for submitting; the real reward comes on approval.
+      await awardPoints(tx, {
+        userId: session.user.id,
+        delta: POINTS.SUBMIT,
+        reason: "SUBMIT",
+        proposalId: created.id,
+      });
+      return created;
     });
     revalidatePath("/console/proposals");
+    revalidatePath("/profile");
     return { ok: true, proposalId: proposal.id };
   } catch (e) {
     // Partial-unique violation = an open proposal already exists for this route.
@@ -166,7 +180,16 @@ export async function reviewProposal(
       throw new AlreadyDecidedError();
     }
 
-    if (decision === "reject") return 0;
+    if (decision === "reject") {
+      // Claw back the submit nod so junk nets zero (rewards R1).
+      await awardPoints(tx, {
+        userId: proposal.submittedById,
+        delta: POINTS.REJECT_CLAWBACK,
+        reason: "REJECT_CLAWBACK",
+        proposalId: proposal.id,
+      });
+      return 0;
+    }
 
     // Re-validate amounts at approval so corrupt/tampered proposed* columns
     // never reach applyFareChange or the GTFS export (see proposal-schema.ts).
@@ -176,6 +199,22 @@ export async function reviewProposal(
       source: "PROPOSAL_APPROVAL",
       changedById: session.user.id,
       proposalId: proposal.id,
+    });
+
+    // The real reward: a human validated this fare (rewards R1).
+    await awardPoints(tx, {
+      userId: proposal.submittedById,
+      delta: POINTS.APPROVED,
+      reason: "APPROVED",
+      proposalId: proposal.id,
+    });
+    await deriveBadges(tx, proposal.submittedById);
+
+    // Capture the siblings BEFORE the bulk update — afterwards they're no
+    // longer PENDING and we'd lose track of who to credit.
+    const siblings = await tx.fareProposal.findMany({
+      where: { routeId: proposal.routeId, status: "PENDING" },
+      select: { id: true, submittedById: true },
     });
 
     // Cross-user consolidation: resolve the sibling pendings on this route.
@@ -188,6 +227,16 @@ export async function reviewProposal(
         decidedAt: new Date(),
       },
     });
+
+    // Partial credit: they were right, someone just landed first.
+    for (const s of siblings) {
+      await awardPoints(tx, {
+        userId: s.submittedById,
+        delta: POINTS.SUPERSEDED_CREDIT,
+        reason: "SUPERSEDED_CREDIT",
+        proposalId: s.id,
+      });
+    }
     return sup.count;
   }).catch((e) => {
     if (e instanceof AlreadyDecidedError) return -1;
@@ -201,6 +250,7 @@ export async function reviewProposal(
   revalidatePath("/console/proposals");
   revalidatePath("/console");
   revalidatePath("/console/fares");
+  revalidatePath("/profile");
   return { ok: true, decision, superseded };
 }
 

@@ -1,4 +1,7 @@
 import { describe, expect, it } from "vitest";
+// scripts/ lives outside the @/ (src) alias root, so this cross-root test
+// import has no alias to use.
+// eslint-disable-next-line no-restricted-imports
 import {
   errorCountsFromReport,
   findRegressions,

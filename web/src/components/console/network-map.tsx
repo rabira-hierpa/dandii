@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import { useRouter } from "next/navigation";
 import MapGl, {
   Layer,
@@ -23,6 +30,7 @@ import {
 } from "@/components/map/map-style";
 import { StopMarkersLayer } from "@/components/map/stop-markers-layer";
 import type { StopSearchResult } from "@/components/map/types";
+import { ga } from "@/lib/gtag";
 import {
   CLOSED_ROUTE_COLOR,
   CLOSURE_REASON_LABELS,
@@ -71,7 +79,9 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
   const router = useRouter();
   const mapRef = useRef<MapRef>(null);
   const { selectedRouteId, setSelectedRouteId } = useMapStore();
-  const [geojson, setGeojson] = useState<GeoJSON.FeatureCollection | null>(null);
+  const [geojson, setGeojson] = useState<GeoJSON.FeatureCollection | null>(
+    null,
+  );
   const [panelSearch, setPanelSearch] = useState("");
   const [isPending, startTransition] = useTransition();
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -128,14 +138,16 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
 
   const onMapClick = (event: MapLayerMouseEvent) => {
     const feature = event.features?.[0];
-    setSelectedRouteId(
-      feature ? (feature.properties.routeId as string) : null,
-    );
+    const routeId = feature ? (feature.properties.routeId as string) : null;
+    if (routeId) ga.consoleSelectRoute(routeId);
+    setSelectedRouteId(routeId);
   };
 
   // A hovered route is only highlighted while it isn't the selected one.
   const effectiveHover =
-    hoveredRouteId && hoveredRouteId !== selectedRouteId ? hoveredRouteId : null;
+    hoveredRouteId && hoveredRouteId !== selectedRouteId
+      ? hoveredRouteId
+      : null;
   const hoveredRoute = effectiveHover ? routeById.get(effectiveHover) : null;
   // Derived (not stored) so there's no synchronous setState on hover-out.
   const hoverStops: StopSearchResult[] = effectiveHover
@@ -211,7 +223,10 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
           endsAt: new Date(endsAt),
         });
         if (result.ok) {
-          setFeedback(`${selected.shortName} closed · ${CLOSURE_REASON_LABELS[reason]}`);
+          ga.consoleCloseRoute(selected.id, reason);
+          setFeedback(
+            `${selected.shortName} closed · ${CLOSURE_REASON_LABELS[reason]}`,
+          );
           setNote("");
           await loadGeojson();
           router.refresh();
@@ -224,12 +239,17 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
     });
   };
 
-  const submitReopen = (closureId: string, shortName: string) => {
+  const submitReopen = (
+    closureId: string,
+    routeId: string,
+    shortName: string,
+  ) => {
     setFeedback(null);
     startTransition(async () => {
       try {
         const result = await endClosure(closureId);
         if (result.ok) {
+          ga.consoleReopenRoute(routeId);
           setFeedback(`${shortName} reopened`);
           await loadGeojson();
           router.refresh();
@@ -272,7 +292,7 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
           </span>
         </div>
 
-        <div className="relative h-[62vh] min-h-100 overflow-hidden rounded-lg">
+        <div className="relative h-[90vh] min-h-100 overflow-hidden rounded-lg">
           {hoveredRoute && (
             <div className="pointer-events-none absolute top-2.5 left-2.5 z-10 flex max-w-[80%] items-center gap-2 rounded-lg border border-[#E2E6DE] bg-white/95 px-2.5 py-1.5 shadow-sm backdrop-blur">
               <RouteChip
@@ -422,7 +442,11 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
                 </div>
                 <button
                   onClick={() =>
-                    submitReopen(selected.closure!.id, selected.shortName)
+                    submitReopen(
+                      selected.closure!.id,
+                      selected.id,
+                      selected.shortName,
+                    )
                   }
                   disabled={isPending}
                   className="cursor-pointer self-start rounded-lg border border-[#86EFAC] bg-white px-3.5 py-1.5 text-[12.5px] font-semibold text-[#15803D] hover:bg-[#F0FDF4] disabled:opacity-50"
@@ -507,7 +531,10 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
             {panelRoutes.map((route) => (
               <button
                 key={route.id}
-                onClick={() => setSelectedRouteId(route.id)}
+                onClick={() => {
+                  ga.consoleSelectRoute(route.id);
+                  setSelectedRouteId(route.id);
+                }}
                 className={cx(
                   "flex cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-2 text-left",
                   selectedRouteId === route.id

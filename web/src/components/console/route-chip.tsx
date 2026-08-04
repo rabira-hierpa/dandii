@@ -4,11 +4,11 @@ export function RouteChip({
   shortName,
   operatorCode,
   size = "md",
-}: {
+}: Readonly<{
   shortName: string;
   operatorCode: OperatorCode | null;
   size?: "sm" | "md";
-}) {
+}>) {
   const meta = operatorCode ? OPERATOR_META[operatorCode] : null;
   return (
     <span

@@ -3,9 +3,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Key } from "react-aria-components";
 import { SwitchVertical01 } from "@untitledui/icons";
+import { useTranslations } from "next-intl";
 import { Select } from "@/components/base/select/select";
 import type { SelectItemType } from "@/components/base/select/select-shared";
 import { OPERATOR_CODES, OPERATOR_META, type OperatorCode } from "@/lib/operators";
+import { ga } from "@/lib/gtag";
 import { useMapStore } from "@/stores/map-store";
 import { cx } from "@/utils/cx";
 import type { DirectRoute, StopSearchResult, TransferJourney } from "./types";
@@ -133,6 +135,7 @@ export function DirectionsPanel({
   onFallback,
   onEndpoints,
 }: DirectionsPanelProps) {
+  const t = useTranslations("directions");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const setSheetSnap = useMapStore((s) => s.setSheetSnap);
@@ -177,6 +180,7 @@ export function DirectionsPanel({
 
   const plan = async () => {
     if (!from || !to) return;
+    ga.directionsRequest(from.id, to.id);
     setLoading(true);
     setError(null);
     onResults(null);
@@ -194,7 +198,7 @@ export function DirectionsPanel({
       else if (journeys.length > 0) onSelectJourney(journeys[0].id);
       setSheetSnap("half");
     } catch {
-      setError("Journey planner is unavailable right now.");
+      setError(t("unavailable"));
     } finally {
       setLoading(false);
     }
@@ -247,19 +251,19 @@ export function DirectionsPanel({
       {/* Endpoints */}
       <div className="relative flex flex-col gap-2">
         <EndpointInput
-          placeholder="Choose start point"
+          placeholder={t("chooseStart")}
           value={from}
           onSelect={setFrom}
           dotClass="border-[3px] border-[#1A73E8] bg-white"
         />
         <EndpointInput
-          placeholder="Choose destination"
+          placeholder={t("chooseDestination")}
           value={to}
           onSelect={setTo}
           dotClass="bg-[#D93025]"
         />
         <button
-          aria-label="Swap start and destination"
+          aria-label={t("swap")}
           onClick={swap}
           className="absolute top-1/2 -right-1 -translate-y-1/2 cursor-pointer rounded-full p-2 text-[#5F6368] hover:bg-[#F1F3F4]"
         >
@@ -272,14 +276,14 @@ export function DirectionsPanel({
           onClick={useMyLocation}
           className="cursor-pointer rounded-full border border-[#DADCE0] px-3 py-1.5 text-[12.5px] font-medium text-[#1A73E8] hover:bg-[#F8FBFF]"
         >
-          Use my location
+          {t("useMyLocation")}
         </button>
         <button
           onClick={plan}
           disabled={!from || !to || loading}
           className="ml-auto cursor-pointer rounded-full bg-[#1A73E8] px-5 py-2 text-[13.5px] font-semibold text-white shadow-sm hover:bg-[#1765CC] disabled:cursor-not-allowed disabled:opacity-40"
         >
-          {loading ? "Planning…" : "Directions"}
+          {loading ? t("planning") : t("getDirections")}
         </button>
       </div>
 
@@ -328,8 +332,7 @@ export function DirectionsPanel({
         (!fallback || fallback.length === 0) &&
         !loading && (
           <div className="rounded-xl bg-[#F8F9FA] px-3 py-4 text-center text-[13px] text-[#5F6368]">
-            No route between these places. Try nearby stops, or a stop on a
-            major corridor.
+{t("noRoute")}
           </div>
         )}
 
@@ -353,7 +356,7 @@ export function DirectionsPanel({
         visibleFallback.length > 0 && (
           <div className="flex flex-col gap-2">
             <div className="text-[11px] font-semibold tracking-wide text-[#5F6368] uppercase">
-              Requires a transfer
+              {t("requiresTransfer")}
             </div>
             {visibleFallback.map((journey) => (
               <JourneyCard

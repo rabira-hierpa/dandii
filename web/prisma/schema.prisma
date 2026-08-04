@@ -31,6 +31,16 @@ model User {
   // (design-review D2). Null = never viewed.
   lastSubmissionsViewedAt DateTime?
 
+  // Contributor rewards (R1). `points` is a cached sum of pointsLedger.delta;
+  // the ledger is the source of truth. Level is derived from points in code.
+  points       Int            @default(0)
+  pointsLedger PointsLedger[]
+  badges       UserBadge[]
+  /// R2: appear on the public contributor leaderboard. Off by default —
+  /// showing a real name publicly is the user's choice, never a side effect
+  /// of contributing.
+  leaderboardOptIn Boolean @default(false)
+
   @@unique([email])
   @@map("user")
 }
@@ -277,6 +287,70 @@ model RouteAssignment {
 }
 
 // ---------------------------------------------------------------------------
+// Stop-graph analysis — a derived network graph (nodes = stops, edges = direct
+// hops) used for centrality/interchange analysis. Rebuilt from a GTFS feed by
+// an offline job; each run is a StopGraphBuild snapshot so results stay
+// reproducible and comparable across feed versions.
+// ---------------------------------------------------------------------------
+
+enum StopGraphBuildStatus {
+  READY
+  FAILED
+}
+
+model StopGraphBuild {
+  id            String               @id @default(cuid())
+  builtAt       DateTime             @default(now())
+  /// GTFS calendar window this graph was built for (YYYYMMDD).
+  calendarStart String
+  calendarEnd   String
+  /// Feed the build read from, for traceability.
+  sourcePath    String
+  nodeCount     Int                  @default(0)
+  edgeCount     Int                  @default(0)
+  status        StopGraphBuildStatus @default(READY)
+  error         String?
+
+  nodes StopGraphNode[]
+  edges StopGraphEdge[]
+
+  @@map("stop_graph_build")
+}
+
+model StopGraphNode {
+  id      String         @id @default(cuid())
+  buildId String
+  build   StopGraphBuild @relation(fields: [buildId], references: [id], onDelete: Cascade)
+  stopId  String
+  /// Number of distinct stops reachable in one hop.
+  degree  Int
+  /// Betweenness centrality — how often this stop sits on shortest paths.
+  betweenness Float @default(0)
+
+  @@unique([buildId, stopId])
+  @@index([buildId, betweenness])
+  @@map("stop_graph_node")
+}
+
+model StopGraphEdge {
+  id            String         @id @default(cuid())
+  buildId       String
+  build         StopGraphBuild @relation(fields: [buildId], references: [id], onDelete: Cascade)
+  fromStopId    String
+  toStopId      String
+  /// Median observed run time for this hop.
+  travelTimeSec Float
+  /// Trips per service day traversing this hop.
+  frequency     Int
+
+  @@unique([buildId, fromStopId, toStopId])
+  @@index([buildId])
+  @@index([fromStopId])
+  @@index([toStopId])
+  @@map("stop_graph_edge")
+}
+
+// ---------------------------------------------------------------------------
 // Crowdsourced fare registry (design doc: rz-dev-design-20260721)
 // ---------------------------------------------------------------------------
 
@@ -385,4 +459,47 @@ model FeedVersion {
   createdAt       DateTime        @default(now())
 
   @@map("feed_version")
+}
+
+// ---------------------------------------------------------------------------
+// Contributor rewards (R1) — see docs/rewards-and-amharic-design.md
+// ---------------------------------------------------------------------------
+
+enum PointsReason {
+  SUBMIT // rider submitted a fare proposal (+2 nod)
+  APPROVED // proposal approved (+20, the real reward)
+  REJECT_CLAWBACK // proposal rejected — remove the submit nod (-2)
+  SUPERSEDED_CREDIT // a correct sibling landed first (+10 partial credit)
+  BADGE_BONUS // one-off bonus when a badge is earned
+  BACKFILL // retroactive award for pre-R1 approved proposals
+}
+
+// Append-only ledger of every point change. `User.points` is the cached sum.
+// The (proposalId, reason) uniqueness makes awards idempotent — a double-fire
+// (retry, concurrent decision) can never double-pay for the same event.
+model PointsLedger {
+  id         String       @id @default(cuid())
+  userId     String
+  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  delta      Int
+  reason     PointsReason
+  proposalId String?
+  createdAt  DateTime     @default(now())
+
+  @@unique([proposalId, reason])
+  @@index([userId, createdAt])
+  @@map("points_ledger")
+}
+
+// A milestone badge a user has earned. Event-based (stored, not derived) so we
+// can show when it was earned and celebrate it once.
+model UserBadge {
+  userId   String
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  badge    String // "first_fix" | "reliable_reporter" | "fare_authority"
+  earnedAt DateTime @default(now())
+
+  @@id([userId, badge])
+  @@index([userId])
+  @@map("user_badge")
 }

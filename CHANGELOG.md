@@ -2,6 +2,25 @@
 
 All notable changes to Dandii are documented in this file.
 
+## [1.2.0] — 2026-08-05
+
+### Added
+
+- **Amharic (አማርኛ).** Full second locale via `next-intl`, with an EN/አማ toggle. The locale lives in a cookie (seeded from `Accept-Language`), so no route had to move; `/am/` URLs are a planned follow-up. Adds Noto Sans Ethiopic to the font stack — Inter and Poppins carry no Ge'ez glyphs, so Amharic would otherwise render as tofu. Level titles are translated too. Catalog parity (matching keys, preserved ICU placeholders) is enforced by tests.
+- **Contributor rewards (R2).** Public **Fare Scouts leaderboard** at `/leaderboard`, ranked by points — **opt-in only**, so a rider is never listed publicly as a side effect of contributing (toggle on the profile). Adds **streaks** (consecutive weeks with an approved contribution, with a one-week grace so a single busy week doesn't erase months of habit) and two milestone badges: **Network Explorer** (approved fares across ≥3 operators, rewarding breadth over farming one corridor) and **Consistent Commuter** (a 4-week streak).
+- **Contributor rewards (R1).** "Fare Scout" status ladder: an append-only points ledger, derived levels, and milestone badges. Submitting a fare correction earns a small nod (+2); an **approved** correction earns the real reward (+20) and can unlock a badge; a rejection claws the nod back so junk nets zero; a correct-but-superseded proposal gets partial credit (+10). Awards are idempotent per (proposal, reason) and run inside the existing review transaction. New "My Contributions" panel on the profile shows points, level, progress to the next level, badges, and impact. Includes a retro-backfill script so pre-R1 contributors aren't starting from zero.
+- **Google Analytics 4.** Site-wide gtag via `@next/third-parties` (reads `G4A_TAG`), plus curated custom events for the essential actions — public: search (`search_term`), route/stop select, directions request, agency filter, transit-layer toggle, account menu, my-location, save route, fare-proposal submit; console: route select, close/reopen route, fare review. Events run through one helper (`lib/gtag.ts`).
+
+### Changed
+
+- **Profile and sign-in redesigned** on a shared `TransitBackdrop` (the green wash, route lines, and minibus watermark from the 404/access-denied pages), so every full-page surface outside the map reads as one product. 404 and access-denied are unchanged.
+- **Submitted fares are explorable.** Selecting a fare edit on the profile reveals the route it belongs to, the fare change as a before → after diff, both notes, the submitted/decided dates, and a deep link to the route on the map. Routes with no prior fare read "No fare on record" rather than a misleading 0 ETB.
+- **Enterprise coding standards enforced in tooling**, not just prose: ESLint now bans `../` parent imports, requires `import type`, bans `any`, and warns above cognitive complexity 15. Generated Prisma code is ignored; vendored Untitled UI is relaxed. Adds a **Security Standards** section to `web/CLAUDE.md` (secrets/config, authn/authz, input validation + parameterized DB, output/injection safety, errors/rate-limiting/deps).
+
+### Fixed
+
+- **`prisma migrate dev` no longer demands a destructive reset.** The dev database had a `stop_graph` migration applied that was missing from the repo and from `schema.prisma`. Adopted it — migration recreated from the live DDL and models declared — rather than dropping 2270 nodes / 3885 edges of computed data whose generating script isn't in the repo.
+
 ## [1.1.0] — 2026-07-29
 
 ### Added

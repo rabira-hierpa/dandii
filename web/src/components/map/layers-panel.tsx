@@ -1,6 +1,8 @@
 "use client";
 
 import { X as CloseX } from "@untitledui/icons";
+import { useTranslations } from "next-intl";
+import { ga } from "@/lib/gtag";
 import { OPERATOR_META, OPERATOR_CODES } from "@/lib/operators";
 import { useMapStore } from "@/stores/map-store";
 import { cx } from "@/utils/cx";
@@ -10,6 +12,8 @@ import { cx } from "@/utils/cx";
  * Renders as a bottom overlay on mobile and a floating card on desktop.
  */
 export function LayersPanel() {
+  const t = useTranslations("map");
+  const tc = useTranslations("common");
   const { layersOpen, setLayersOpen, hiddenOperators, toggleOperator } =
     useMapStore();
 
@@ -26,14 +30,14 @@ export function LayersPanel() {
         <div className="mb-3 flex items-center justify-between">
           <div>
             <div className="text-[15px] font-semibold text-[#202124]">
-              Transit layers
+              {t("transitLayers")}
             </div>
             <div className="text-[12px] text-[#5F6368]">
-              Show or hide each agency&apos;s network
+              {t("transitLayersHint")}
             </div>
           </div>
           <button
-            aria-label="Close layers"
+            aria-label={tc("close")}
             onClick={() => setLayersOpen(false)}
             className="cursor-pointer rounded-full p-1.5 text-[#5F6368] hover:bg-[#F1F3F4]"
           >
@@ -48,7 +52,10 @@ export function LayersPanel() {
             return (
               <button
                 key={code}
-                onClick={() => toggleOperator(code)}
+                onClick={() => {
+                  ga.toggleLayer(code, !visible);
+                  toggleOperator(code);
+                }}
                 role="switch"
                 aria-checked={visible}
                 className="flex cursor-pointer items-center gap-3 rounded-xl px-2.5 py-2.5 text-left hover:bg-[#F8F9FA]"

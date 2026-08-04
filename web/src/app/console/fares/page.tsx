@@ -5,7 +5,7 @@ import { OPERATOR_CODES } from "@/lib/operators";
 import { CONSOLE_ROLES } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/session";
-import { RouteFilters } from "../routes/filters";
+import { RouteFilters } from "@/app/console/routes/filters";
 import type { FareRowData } from "./fare-row";
 import { FaresList } from "./fares-list";
 

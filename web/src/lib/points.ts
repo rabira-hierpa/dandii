@@ -22,24 +22,29 @@ export const POINTS = {
 
 export interface Level {
   level: number;
+  /** English title — the fallback when no translation is loaded. */
   title: string;
+  /** Message key under `rewards.titles.*` so the ladder localizes. */
+  titleKey: string;
   /** Points required to reach this level. */
   from: number;
 }
 
 /** Ladder thresholds. Level is always derived from points — never stored. */
 export const LEVELS: Level[] = [
-  { level: 1, title: "Newcomer", from: 0 },
-  { level: 2, title: "Fare Spotter", from: 25 },
-  { level: 3, title: "Fare Scout", from: 75 },
-  { level: 4, title: "Route Ranger", from: 200 },
-  { level: 5, title: "Transit Guardian", from: 500 },
-  { level: 6, title: "Transit Legend", from: 1000 },
+  { level: 1, title: "Newcomer", titleKey: "newcomer", from: 0 },
+  { level: 2, title: "Fare Spotter", titleKey: "fareSpotter", from: 25 },
+  { level: 3, title: "Fare Scout", titleKey: "fareScout", from: 75 },
+  { level: 4, title: "Route Ranger", titleKey: "routeRanger", from: 200 },
+  { level: 5, title: "Transit Guardian", titleKey: "transitGuardian", from: 500 },
+  { level: 6, title: "Transit Legend", titleKey: "transitLegend", from: 1000 },
 ];
 
 export interface LevelProgress {
   level: number;
   title: string;
+  /** Message key under `rewards.titles.*` for the localized title. */
+  titleKey: string;
   points: number;
   /** Points at which the current level started. */
   levelFloor: number;
@@ -62,6 +67,7 @@ export function levelForPoints(points: number): LevelProgress {
     return {
       level: current.level,
       title: current.title,
+      titleKey: current.titleKey,
       points: safe,
       levelFloor: current.from,
       nextAt: null,
@@ -74,6 +80,7 @@ export function levelForPoints(points: number): LevelProgress {
   return {
     level: current.level,
     title: current.title,
+    titleKey: current.titleKey,
     points: safe,
     levelFloor: current.from,
     nextAt: next.from,
@@ -99,9 +106,71 @@ export const COUNT_BADGES = [
   },
 ] as const;
 
-export const BADGE_LABELS: Record<string, string> = Object.fromEntries(
-  COUNT_BADGES.map((b) => [b.badge, b.label]),
-);
+/**
+ * R2 milestone badges that aren't a simple approved-count.
+ *
+ * `network_explorer` rewards breadth (fares fixed across ≥3 operators), so
+ * riders map the whole city rather than farming one familiar corridor.
+ * `consistent_commuter` rewards habit (contributions in consecutive weeks).
+ */
+export const OPERATOR_SPREAD_BADGE = {
+  badge: "network_explorer",
+  label: "Network Explorer",
+  operatorsRequired: 3,
+  bonus: 25,
+} as const;
+
+export const STREAK_BADGE = {
+  badge: "consistent_commuter",
+  label: "Consistent Commuter",
+  weeksRequired: 4,
+  bonus: 25,
+} as const;
+
+export const BADGE_LABELS: Record<string, string> = {
+  ...Object.fromEntries(COUNT_BADGES.map((b) => [b.badge, b.label])),
+  [OPERATOR_SPREAD_BADGE.badge]: OPERATOR_SPREAD_BADGE.label,
+  [STREAK_BADGE.badge]: STREAK_BADGE.label,
+};
+
+/** Monday 1970-01-05 — the first Monday of the epoch, our week anchor. */
+const WEEK_ANCHOR_MS = Date.UTC(1970, 0, 5);
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Whole weeks since the anchor Monday (UTC). An integer index makes
+ * "consecutive weeks" plain arithmetic and sidesteps ISO-week/timezone edges.
+ */
+export function weekIndex(date: Date): number {
+  return Math.floor((date.getTime() - WEEK_ANCHOR_MS) / WEEK_MS);
+}
+
+/**
+ * Length of the user's current contribution streak, in consecutive weeks.
+ *
+ * Counted from the week of each APPROVED proposal's *submission* date: the
+ * rider controls when they submit, but only quality-gated (approved) work
+ * counts. A streak stays alive through the following week — miss two weeks and
+ * it resets to 0 — so a single busy week doesn't erase months of habit.
+ */
+export function computeStreakWeeks(
+  submittedAt: Date[],
+  now: Date = new Date(),
+): number {
+  if (submittedAt.length === 0) return 0;
+  const weeks = [...new Set(submittedAt.map(weekIndex))].sort((a, b) => b - a);
+  const thisWeek = weekIndex(now);
+
+  // Stale streak: nothing this week or last.
+  if (weeks[0] < thisWeek - 1) return 0;
+
+  let streak = 1;
+  for (let i = 1; i < weeks.length; i++) {
+    if (weeks[i - 1] - weeks[i] === 1) streak++;
+    else break;
+  }
+  return streak;
+}
 
 /** Minimal transaction surface these helpers need (works with $transaction). */
 type Tx = Prisma.TransactionClient;
@@ -159,11 +228,32 @@ export async function awardPoints(
  * Called after an approval lands. Returns the badge ids granted (usually none).
  */
 export async function deriveBadges(tx: Tx, userId: string): Promise<string[]> {
-  const approved = await tx.fareProposal.count({
+  // One read feeds every badge rule: count, operator spread, and streak.
+  const approvedRows = await tx.fareProposal.findMany({
     where: { submittedById: userId, status: "APPROVED" },
+    select: {
+      createdAt: true,
+      route: { select: { assignment: { select: { operatorId: true } } } },
+    },
   });
 
-  const earned = COUNT_BADGES.filter((b) => approved >= b.approvedRequired);
+  const approved = approvedRows.length;
+  const operators = new Set(
+    approvedRows
+      .map((r) => r.route.assignment?.operatorId)
+      .filter((id): id is string => Boolean(id)),
+  );
+  const streak = computeStreakWeeks(approvedRows.map((r) => r.createdAt));
+
+  const earned: { badge: string; bonus: number }[] = [
+    ...COUNT_BADGES.filter((b) => approved >= b.approvedRequired),
+  ];
+  if (operators.size >= OPERATOR_SPREAD_BADGE.operatorsRequired) {
+    earned.push(OPERATOR_SPREAD_BADGE);
+  }
+  if (streak >= STREAK_BADGE.weeksRequired) {
+    earned.push(STREAK_BADGE);
+  }
   if (earned.length === 0) return [];
 
   const existing = await tx.userBadge.findMany({

@@ -239,13 +239,17 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
     });
   };
 
-  const submitReopen = (closureId: string, shortName: string) => {
+  const submitReopen = (
+    closureId: string,
+    routeId: string,
+    shortName: string,
+  ) => {
     setFeedback(null);
     startTransition(async () => {
       try {
         const result = await endClosure(closureId);
         if (result.ok) {
-          if (selectedRouteId) ga.consoleReopenRoute(selectedRouteId);
+          ga.consoleReopenRoute(routeId);
           setFeedback(`${shortName} reopened`);
           await loadGeojson();
           router.refresh();
@@ -438,7 +442,11 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
                 </div>
                 <button
                   onClick={() =>
-                    submitReopen(selected.closure!.id, selected.shortName)
+                    submitReopen(
+                      selected.closure!.id,
+                      selected.id,
+                      selected.shortName,
+                    )
                   }
                   disabled={isPending}
                   className="cursor-pointer self-start rounded-lg border border-[#86EFAC] bg-white px-3.5 py-1.5 text-[12.5px] font-semibold text-[#15803D] hover:bg-[#F0FDF4] disabled:opacity-50"

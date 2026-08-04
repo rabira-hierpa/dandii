@@ -2,10 +2,12 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ArrowLeft } from "@untitledui/icons";
 import { DandiiLogo } from "@/components/foundations/logo/dandii-logo";
+import { LocaleToggle } from "@/components/foundations/locale-toggle";
 import { TransitBackdrop } from "@/components/foundations/transit-backdrop";
 import { getAccountData } from "@/lib/account";
 import { CONSOLE_ROLES, type AppRole } from "@/lib/permissions";
 import { getSession } from "@/lib/session";
+import { LeaderboardToggle } from "./leaderboard-toggle";
 import { MarkSubmissionsViewed } from "./mark-viewed";
 import { ProfileForm } from "./profile-form";
 import { SubmissionList } from "./submission-list";
@@ -36,12 +38,15 @@ export default async function ProfilePage() {
           <Link href="/" className="text-brand-700">
             <DandiiLogo />
           </Link>
-          <Link
-            href="/"
-            className="flex w-fit items-center gap-1.5 text-[13px] font-semibold text-brand-700 hover:underline"
-          >
-            <ArrowLeft className="size-4" /> Back to map
-          </Link>
+          <div className="flex items-center gap-3">
+            <LocaleToggle />
+            <Link
+              href="/"
+              className="flex w-fit items-center gap-1.5 text-[13px] font-semibold text-brand-700 hover:underline"
+            >
+              <ArrowLeft className="size-4" /> Back to map
+            </Link>
+          </div>
         </div>
 
         <div className="flex items-center gap-4">
@@ -117,6 +122,17 @@ export default async function ProfilePage() {
             </p>
           )}
 
+          {/* Streak — consecutive weeks with an approved contribution (R2) */}
+          {contributions.streakWeeks > 0 && (
+            <p className="mt-2 flex items-center gap-1.5 text-[12.5px] font-medium text-[#B45309]">
+              <span aria-hidden>🔥</span>
+              {contributions.streakWeeks}-week streak
+              <span className="font-normal text-[#5F6368]">
+                — keep it alive with an edit this week.
+              </span>
+            </p>
+          )}
+
           {/* Badges */}
           {contributions.badges.length > 0 && (
             <div className="mt-3 flex flex-wrap gap-1.5">
@@ -131,6 +147,10 @@ export default async function ProfilePage() {
               ))}
             </div>
           )}
+
+          <div className="mt-4 border-t border-[#EEF1EA] pt-3">
+            <LeaderboardToggle initialOptIn={contributions.leaderboardOptIn} />
+          </div>
         </section>
 
         {/* Contribution summary */}

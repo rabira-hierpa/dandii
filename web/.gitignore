@@ -49,3 +49,6 @@ next-env.d.ts
 # Playwright
 test-results/
 playwright-report/
+
+# Promo clip recordings (regenerate with `npm run promo`)
+scripts/promo/out/

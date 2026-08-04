@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
@@ -50,4 +51,25 @@ export async function updateProfile(input: z.infer<typeof profileSchema>) {
   const { name } = profileSchema.parse(input);
   await prisma.user.update({ where: { id: session.user.id }, data: { name } });
   return { ok: true as const };
+}
+
+const optInSchema = z.object({ optIn: z.boolean() });
+
+/**
+ * Join or leave the public contributor leaderboard (R2). Opt-in only — a rider
+ * is never listed publicly as a side effect of contributing.
+ */
+export async function setLeaderboardOptIn(
+  input: z.infer<typeof optInSchema>,
+) {
+  const session = await getSession();
+  if (!session) return { ok: false as const, error: "Not signed in" };
+  const { optIn } = optInSchema.parse(input);
+  await prisma.user.update({
+    where: { id: session.user.id },
+    data: { leaderboardOptIn: optIn },
+  });
+  revalidatePath("/leaderboard");
+  revalidatePath("/profile");
+  return { ok: true as const, optIn };
 }

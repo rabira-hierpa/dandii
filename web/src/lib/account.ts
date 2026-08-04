@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { BADGE_LABELS, levelForPoints } from "@/lib/points";
+import { BADGE_LABELS, computeStreakWeeks, levelForPoints } from "@/lib/points";
 import { formatBaselineLabel, formatProposedLabel } from "@/lib/proposed-label";
 
 export interface SavedRouteItem {
@@ -31,6 +31,7 @@ export interface ContributionStats {
   points: number;
   level: number;
   title: string;
+  titleKey: string;
   /** Points needed for the next level; null at max level. */
   nextAt: number | null;
   toNext: number | null;
@@ -41,6 +42,10 @@ export interface ContributionStats {
   /** Distinct routes the user has an approved fare on (impact line). */
   routesImproved: number;
   badges: { badge: string; label: string; earnedAt: string }[];
+  /** R2: consecutive weeks with an approved contribution. */
+  streakWeeks: number;
+  /** R2: whether the user appears on the public leaderboard. */
+  leaderboardOptIn: boolean;
 }
 
 export interface AccountData {
@@ -55,7 +60,8 @@ export interface AccountData {
 export { formatProposedLabel } from "@/lib/proposed-label";
 
 export async function getAccountData(userId: string): Promise<AccountData> {
-  const [saved, proposals, user, badges, approvedRoutes] = await Promise.all([
+  const [saved, proposals, user, badges, approvedRoutes, approvedDates] =
+    await Promise.all([
     prisma.savedRoute.findMany({
       where: { userId },
       orderBy: { createdAt: "desc" },
@@ -99,7 +105,11 @@ export async function getAccountData(userId: string): Promise<AccountData> {
     }),
     prisma.user.findUnique({
       where: { id: userId },
-      select: { lastSubmissionsViewedAt: true, points: true },
+      select: {
+        lastSubmissionsViewedAt: true,
+        points: true,
+        leaderboardOptIn: true,
+      },
     }),
     prisma.userBadge.findMany({
       where: { userId },
@@ -110,6 +120,12 @@ export async function getAccountData(userId: string): Promise<AccountData> {
       where: { submittedById: userId, status: "APPROVED" },
       select: { routeId: true },
       distinct: ["routeId"],
+    }),
+    // Every approved submission date — the streak spans the user's whole
+    // history, so it can't be read off the 50-row submissions page.
+    prisma.fareProposal.findMany({
+      where: { submittedById: userId, status: "APPROVED" },
+      select: { createdAt: true },
     }),
   ]);
 
@@ -123,6 +139,7 @@ export async function getAccountData(userId: string): Promise<AccountData> {
     points: progress.points,
     level: progress.level,
     title: progress.title,
+    titleKey: progress.titleKey,
     nextAt: progress.nextAt,
     toNext: progress.toNext,
     percent: progress.percent,
@@ -134,6 +151,8 @@ export async function getAccountData(userId: string): Promise<AccountData> {
       label: BADGE_LABELS[b.badge] ?? b.badge,
       earnedAt: b.earnedAt.toISOString(),
     })),
+    streakWeeks: computeStreakWeeks(approvedDates.map((d) => d.createdAt)),
+    leaderboardOptIn: user?.leaderboardOptIn ?? false,
   };
 
   return {

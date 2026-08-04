@@ -37,6 +37,8 @@ import {
 } from "./library-rail";
 import { BlueDotMarker } from "./markers";
 import { DandiiLogo } from "@/components/foundations/logo/dandii-logo";
+import { useTranslations } from "next-intl";
+import { LocaleToggle } from "@/components/foundations/locale-toggle";
 import { ga } from "@/lib/gtag";
 import {
   ADDIS_CENTER,
@@ -111,6 +113,7 @@ function StopCard({
   stop: StopSearchResult;
   onDirections: (stop: StopSearchResult) => void;
 }) {
+  const t = useTranslations("map");
   return (
     <div className="rounded-2xl bg-[#F8F9FA] p-3.5">
       <div className="flex items-center gap-2.5">
@@ -126,7 +129,7 @@ function StopCard({
         onClick={() => onDirections(stop)}
         className="mt-3 w-full cursor-pointer rounded-full bg-[#1A73E8] py-2 text-[13px] font-semibold text-white hover:bg-[#1765CC]"
       >
-        Directions to here
+        {t("directionsToHere")}
       </button>
     </div>
   );
@@ -140,6 +143,8 @@ interface PublicMapProps {
 export function PublicMap({ user, account }: PublicMapProps) {
   const router = useRouter();
   const mapRef = useRef<MapRef>(null);
+  const tMap = useTranslations("map");
+  const tc = useTranslations("common");
   const { selectedRouteId, setSelectedRouteId, hiddenOperators, setSheetSnap } =
     useMapStore();
 
@@ -782,7 +787,7 @@ export function PublicMap({ user, account }: PublicMapProps) {
                     : "text-[#5F6368]",
                 )}
               >
-                {t}
+                {tMap(t)}
               </button>
             ))}
           </div>
@@ -805,7 +810,7 @@ export function PublicMap({ user, account }: PublicMapProps) {
                     setDetailSource(null);
                   }
                 }}
-                placeholder="Search routes and stops"
+                placeholder={tMap("searchPlaceholder")}
                 className="w-full rounded-full bg-[#F1F3F4] py-2.5 pr-4 pl-10 text-[14px] text-[#202124] placeholder:text-[#5F6368] focus:bg-white focus:outline-2 focus:outline-[#1A73E8]"
               />
             </div>
@@ -871,7 +876,7 @@ export function PublicMap({ user, account }: PublicMapProps) {
               >
                 {results.routes.length > 0 && (
                   <div className="mt-1 text-[10.5px] font-semibold tracking-wide text-[#5F6368] uppercase">
-                    Routes
+                    {tMap("routes")}
                   </div>
                 )}
                 {results.routes.map((route) => (
@@ -899,7 +904,7 @@ export function PublicMap({ user, account }: PublicMapProps) {
                 ))}
                 {results.stops.length > 0 && (
                   <div className="mt-1 text-[10.5px] font-semibold tracking-wide text-[#5F6368] uppercase">
-                    Stops
+                    {tMap("stops")}
                   </div>
                 )}
                 {results.stops.map((stop) => (
@@ -919,7 +924,7 @@ export function PublicMap({ user, account }: PublicMapProps) {
                     </span>
                     {stop.count && stop.count > 1 && (
                       <span className="shrink-0 rounded-full bg-[#F1F3F4] px-1.5 py-0.5 text-[10.5px] font-medium text-[#5F6368]">
-                        {stop.count} stops
+                        {tMap("stopsCount", { count: stop.count })}
                       </span>
                     )}
                   </button>
@@ -931,7 +936,7 @@ export function PublicMap({ user, account }: PublicMapProps) {
               detailSource !== "direct" &&
               !hasSearchResults && (
                 <div className="py-2 text-center text-[13px] text-[#80868B]">
-                  No routes or stops found.
+                  {tMap("noResults")}
                 </div>
               )}
 
@@ -948,7 +953,7 @@ export function PublicMap({ user, account }: PublicMapProps) {
                   onClick={clearSelection}
                   className="flex cursor-pointer items-center gap-1.5 self-start rounded-full px-2 py-1 text-[13px] font-semibold text-[#1A73E8] hover:bg-[#F1F3F4]"
                 >
-                  ← {detailSource === "search" ? "Back to results" : "Close"}
+                  ← {detailSource === "search" ? tMap("backToResults") : tc("close")}
                 </button>
                 {selectedStop && !detail && (
                   <StopCard
@@ -1247,10 +1252,11 @@ export function PublicMap({ user, account }: PublicMapProps) {
               setTab("explore");
               setSheetSnap("half");
             }}
-            placeholder="Search Addis transit"
+            placeholder={tMap("searchPlaceholderMobile")}
             className="h-12 w-full rounded-full bg-white pr-4 pl-11 text-[15px] text-[#202124] shadow-[0_1px_6px_rgba(0,0,0,0.25)] placeholder:text-[#5F6368] focus:outline-none"
           />
         </div>
+        <LocaleToggle className="h-12 items-center bg-white shadow-[0_1px_6px_rgba(0,0,0,0.25)]" />
         {accountMenu ?? (
           <Link
             href="/sign-in"
@@ -1262,8 +1268,9 @@ export function PublicMap({ user, account }: PublicMapProps) {
         )}
       </div>
 
-      {/* Desktop: account drawer (signed in) or sign-in pill */}
-      <div className="absolute top-4 right-4 z-20 max-sm:hidden">
+      {/* Desktop: language toggle + account drawer (signed in) or sign-in pill */}
+      <div className="absolute top-4 right-4 z-20 flex items-center gap-2 max-sm:hidden">
+        <LocaleToggle className="bg-white shadow-[0_1px_6px_rgba(0,0,0,0.2)]" />
         {accountMenu ?? (
           <Link
             href="/sign-in"
@@ -1289,7 +1296,7 @@ export function PublicMap({ user, account }: PublicMapProps) {
               aria-label="Back"
               className="flex cursor-pointer items-center gap-1.5 rounded-full px-2 py-1 text-[13px] font-semibold text-[#1A73E8] hover:bg-[#F1F3F4]"
             >
-              ← Back to results
+              ← {tMap("backToResults")}
             </button>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto p-3">

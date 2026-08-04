@@ -24,7 +24,8 @@
     "backToResults": "Back to results",
     "saved": "Saved",
     "recent": "Recent",
-    "submissions": "Fare submissions"
+    "submissions": "Fare submissions",
+    "directionsToHere": "Directions to here"
   },
   "directions": {
     "chooseStart": "Choose start point",

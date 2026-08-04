@@ -31,6 +31,7 @@ export interface ContributionStats {
   points: number;
   level: number;
   title: string;
+  titleKey: string;
   /** Points needed for the next level; null at max level. */
   nextAt: number | null;
   toNext: number | null;
@@ -138,6 +139,7 @@ export async function getAccountData(userId: string): Promise<AccountData> {
     points: progress.points,
     level: progress.level,
     title: progress.title,
+    titleKey: progress.titleKey,
     nextAt: progress.nextAt,
     toNext: progress.toNext,
     percent: progress.percent,

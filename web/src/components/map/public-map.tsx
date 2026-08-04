@@ -37,6 +37,7 @@ import {
 } from "./library-rail";
 import { BlueDotMarker } from "./markers";
 import { DandiiLogo } from "@/components/foundations/logo/dandii-logo";
+import { LocaleToggle } from "@/components/foundations/locale-toggle";
 import { ga } from "@/lib/gtag";
 import {
   ADDIS_CENTER,
@@ -1247,10 +1248,11 @@ export function PublicMap({ user, account }: PublicMapProps) {
               setTab("explore");
               setSheetSnap("half");
             }}
-            placeholder="Search Addis transit"
+            placeholder="Search transit"
             className="h-12 w-full rounded-full bg-white pr-4 pl-11 text-[15px] text-[#202124] shadow-[0_1px_6px_rgba(0,0,0,0.25)] placeholder:text-[#5F6368] focus:outline-none"
           />
         </div>
+        <LocaleToggle className="h-12 items-center bg-white shadow-[0_1px_6px_rgba(0,0,0,0.25)]" />
         {accountMenu ?? (
           <Link
             href="/sign-in"
@@ -1262,8 +1264,9 @@ export function PublicMap({ user, account }: PublicMapProps) {
         )}
       </div>
 
-      {/* Desktop: account drawer (signed in) or sign-in pill */}
-      <div className="absolute top-4 right-4 z-20 max-sm:hidden">
+      {/* Desktop: language toggle + account drawer (signed in) or sign-in pill */}
+      <div className="absolute top-4 right-4 z-20 flex items-center gap-2 max-sm:hidden">
+        <LocaleToggle className="bg-white shadow-[0_1px_6px_rgba(0,0,0,0.2)]" />
         {accountMenu ?? (
           <Link
             href="/sign-in"

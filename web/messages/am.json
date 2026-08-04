@@ -11,7 +11,7 @@
   },
   "map": {
     "searchPlaceholder": "መስመሮችን እና ፌርማታዎችን ፈልግ",
-    "searchPlaceholderMobile": "የአዲስ አበባ ትራንስፖርት ፈልግ",
+    "searchPlaceholderMobile": "ትራንስፖርት ፈልግ",
     "explore": "አስስ",
     "directions": "አቅጣጫ",
     "routes": "መስመሮች",
@@ -49,7 +49,7 @@
     "tiered": "በደረጃ",
     "submit": "እርማት አቅርብ",
     "submitting": "በመላክ ላይ…",
-    "thanks": "አመሰግናለን — አረጋጋጭ እርማትዎን ይገመግማል።",
+    "thanks": "እናመሰግናለን — አረጋጋጭ እርማትዎን ይገመግማል።",
     "signInFirst": "የታሪፍ እርማት ለማቅረብ ይግቡ"
   },
   "auth": {

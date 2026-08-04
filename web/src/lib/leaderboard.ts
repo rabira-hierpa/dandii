@@ -15,6 +15,7 @@ export interface LeaderboardEntry {
   points: number;
   level: number;
   title: string;
+  titleKey: string;
   approvedCount: number;
   /** True for the signed-in viewer, so the UI can highlight their row. */
   isViewer: boolean;
@@ -64,6 +65,7 @@ export async function getLeaderboard(
       points: u.points,
       level: progress.level,
       title: progress.title,
+      titleKey: progress.titleKey,
       approvedCount: approvedById.get(u.id) ?? 0,
       isViewer: u.id === viewerId,
     };

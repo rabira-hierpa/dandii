@@ -22,24 +22,29 @@ export const POINTS = {
 
 export interface Level {
   level: number;
+  /** English title — the fallback when no translation is loaded. */
   title: string;
+  /** Message key under `rewards.titles.*` so the ladder localizes. */
+  titleKey: string;
   /** Points required to reach this level. */
   from: number;
 }
 
 /** Ladder thresholds. Level is always derived from points — never stored. */
 export const LEVELS: Level[] = [
-  { level: 1, title: "Newcomer", from: 0 },
-  { level: 2, title: "Fare Spotter", from: 25 },
-  { level: 3, title: "Fare Scout", from: 75 },
-  { level: 4, title: "Route Ranger", from: 200 },
-  { level: 5, title: "Transit Guardian", from: 500 },
-  { level: 6, title: "Transit Legend", from: 1000 },
+  { level: 1, title: "Newcomer", titleKey: "newcomer", from: 0 },
+  { level: 2, title: "Fare Spotter", titleKey: "fareSpotter", from: 25 },
+  { level: 3, title: "Fare Scout", titleKey: "fareScout", from: 75 },
+  { level: 4, title: "Route Ranger", titleKey: "routeRanger", from: 200 },
+  { level: 5, title: "Transit Guardian", titleKey: "transitGuardian", from: 500 },
+  { level: 6, title: "Transit Legend", titleKey: "transitLegend", from: 1000 },
 ];
 
 export interface LevelProgress {
   level: number;
   title: string;
+  /** Message key under `rewards.titles.*` for the localized title. */
+  titleKey: string;
   points: number;
   /** Points at which the current level started. */
   levelFloor: number;
@@ -62,6 +67,7 @@ export function levelForPoints(points: number): LevelProgress {
     return {
       level: current.level,
       title: current.title,
+      titleKey: current.titleKey,
       points: safe,
       levelFloor: current.from,
       nextAt: null,
@@ -74,6 +80,7 @@ export function levelForPoints(points: number): LevelProgress {
   return {
     level: current.level,
     title: current.title,
+    titleKey: current.titleKey,
     points: safe,
     levelFloor: current.from,
     nextAt: next.from,

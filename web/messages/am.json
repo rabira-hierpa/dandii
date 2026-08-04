@@ -1,0 +1,129 @@
+{
+  "common": {
+    "backToMap": "ወደ ካርታ ተመለስ",
+    "signIn": "ግባ",
+    "signOut": "ውጣ",
+    "cancel": "ሰርዝ",
+    "save": "አስቀምጥ",
+    "saving": "በማስቀመጥ ላይ…",
+    "close": "ዝጋ",
+    "language": "ቋንቋ"
+  },
+  "map": {
+    "searchPlaceholder": "መስመሮችን እና ፌርማታዎችን ፈልግ",
+    "searchPlaceholderMobile": "የአዲስ አበባ ትራንስፖርት ፈልግ",
+    "explore": "አስስ",
+    "directions": "አቅጣጫ",
+    "routes": "መስመሮች",
+    "stops": "ፌርማታዎች",
+    "noResults": "ምንም መስመር ወይም ፌርማታ አልተገኘም።",
+    "stopsCount": "{count} ፌርማታዎች",
+    "transitLayers": "የትራንስፖርት ንብርብሮች",
+    "transitLayersHint": "የእያንዳንዱን አገልግሎት ሰጪ መረብ አሳይ ወይም ደብቅ",
+    "myLocation": "የእኔ አካባቢ",
+    "backToResults": "ወደ ውጤቶች ተመለስ",
+    "saved": "የተቀመጡ",
+    "recent": "የቅርብ ጊዜ",
+    "submissions": "የታሪፍ አስተያየቶች"
+  },
+  "directions": {
+    "chooseStart": "መነሻ ይምረጡ",
+    "chooseDestination": "መድረሻ ይምረጡ",
+    "useMyLocation": "የእኔን አካባቢ ተጠቀም",
+    "getDirections": "አቅጣጫ",
+    "planning": "በማቀድ ላይ…",
+    "swap": "መነሻና መድረሻ ቀያይር",
+    "noRoute": "በእነዚህ ቦታዎች መካከል ቀጥተኛ መስመር የለም። በአቅራቢያ ያሉ ፌርማታዎችን ይሞክሩ።",
+    "unavailable": "የጉዞ አቅጣጫ አገልግሎት አሁን አይሰራም።",
+    "requiresTransfer": "መቀየር ይጠይቃል",
+    "ride": "{minutes} ጉዞ",
+    "stops": "{count} ፌርማታዎች",
+    "walk": "{meters} ሜ የእግር ጉዞ",
+    "every": "በየ ~{minutes} ደቂቃ",
+    "transfers": "{count, plural, one {# ቅይይር} other {# ቅይይሮች}}",
+    "fare": "≈ {amount} ብር"
+  },
+  "fare": {
+    "question": "በ{route} ላይ ያለው የአሁኑ ታሪፍ ስንት ነው?",
+    "flat": "ቋሚ",
+    "tiered": "በደረጃ",
+    "submit": "እርማት አቅርብ",
+    "submitting": "በመላክ ላይ…",
+    "thanks": "አመሰግናለን — አረጋጋጭ እርማትዎን ይገመግማል።",
+    "signInFirst": "የታሪፍ እርማት ለማቅረብ ይግቡ"
+  },
+  "auth": {
+    "welcomeBack": "እንኳን ደህና መጡ",
+    "title": "ወደ ዳንዲ ይግቡ",
+    "subtitle": "መስመሮችን ያስቀምጡ፣ የታሪፍ እርማቶችን ያቅርቡ፣ እና ለአዲስ አበባ ትራንስፖርት ካርታ ያደረጉትን አስተዋፅዖ ይከታተሉ።",
+    "continueWithGoogle": "በGoogle ይቀጥሉ",
+    "redirecting": "በማዘዋወር ላይ…",
+    "consoleNote": "የአስተዳደር ኮንሶል መዳረሻ በአስተዳዳሪ ይሰጣል።",
+    "justExploring": "እየተመለከቱ ነው?",
+    "browseMap": "ካርታውን ይመልከቱ"
+  },
+  "profile": {
+    "title": "መገለጫ",
+    "savedRoutes": "የተቀመጡ መስመሮች",
+    "fareEdits": "የታሪፍ እርማቶች",
+    "approved": "የጸደቁ",
+    "submittedFares": "የቀረቡ ታሪፎች",
+    "submittedFaresHint": "መስመሩንና ያደረጉትን ለውጥ ለማየት እርማት ይምረጡ።",
+    "noSubmissions": "እስካሁን የታሪፍ እርማት የለም — ማንኛውንም መስመር ከካርታው ላይ ከፍተው የታተመው ታሪፍ ሲቀየር እርማት ያቅርቡ።",
+    "awaitingReview": "{count} ግምገማ በመጠባበቅ ላይ",
+    "fareChange": "የታሪፍ ለውጥ",
+    "noFareOnRecord": "የተመዘገበ ታሪፍ የለም",
+    "yourNote": "የእርስዎ ማስታወሻ",
+    "reviewerNote": "የገምጋሚ ማስታወሻ",
+    "submittedOn": "የቀረበው {date}",
+    "viewOnMap": "{route}ን በካርታ ላይ ይመልከቱ",
+    "openConsole": "የአስተዳደር ኮንሶል ክፈት",
+    "displayName": "የሚታይ ስም"
+  },
+  "status": {
+    "pending": "በመጠባበቅ ላይ",
+    "approved": "ጸድቋል",
+    "rejected": "ውድቅ ተደርጓል",
+    "superseded": "ተፈትቷል"
+  },
+  "rewards": {
+    "myContributions": "የእኔ አስተዋፅዖዎች",
+    "level": "ደረጃ {level}",
+    "points": "ነጥቦች",
+    "toNextLevel": "ወደ ደረጃ {level} ለመድረስ {points} ነጥቦች",
+    "topLevel": "ከፍተኛውን ደረጃ ደርሰዋል — የአዲስ አበባን ታሪፎች በትክክል በማቆየትዎ እናመሰግናለን።",
+    "impact": "{approved, plural, one {# የጸደቀ ታሪፍ} other {# የጸደቁ ታሪፎች}} በ{routes, plural, one {# መስመር} other {# መስመሮች}} ላይ በሥራ ላይ ናቸው።",
+    "getStarted": "ነጥብ ማግኘት ለመጀመር ከማንኛውም መስመር የታሪፍ እርማት ያቅርቡ።",
+    "streak": "የ{weeks} ሳምንት ተከታታይ",
+    "streakHint": "በዚህ ሳምንት እርማት በማቅረብ ያቆዩት።",
+    "showOnLeaderboard": "በሕዝብ የደረጃ ሰሌዳ ላይ አሳየኝ",
+    "leaderboardOn": "ስምዎ፣ ደረጃዎ እና ነጥቦችዎ ለሁሉም ይታያሉ።",
+    "leaderboardOff": "ጠፍቷል — በግል ያበረክታሉ። ነጥቦችዎን የሚያዩት እርስዎ ብቻ ነዎት።",
+    "titles": {
+      "newcomer": "አዲስ መጤ",
+      "fareSpotter": "ታሪፍ ተመልካች",
+      "fareScout": "የታሪፍ ስካውት",
+      "routeRanger": "የመስመር ዘዋሪ",
+      "transitGuardian": "የትራንስፖርት ጠባቂ",
+      "transitLegend": "የትራንስፖርት አፈ ታሪክ"
+    }
+  },
+  "leaderboard": {
+    "title": "የታሪፍ ስካውቶች",
+    "subtitle": "የአዲስ አበባን ታሪፎች በትክክል የሚያቆዩ ተጓዦች። ከጸደቁ የታሪፍ እርማቶች በተገኙ ነጥቦች ደረጃ ተሰጥቷል።",
+    "empty": "እስካሁን ማንም የደረጃ ሰሌዳውን አልተቀላቀለም። የታሪፍ እርማት አቅርበው ከመገለጫዎ በመቀላቀል የመጀመሪያው ይሁኑ።",
+    "you": "እርስዎ",
+    "approvedCount": "{count} የጸደቀ",
+    "notListed": "በደረጃ ሰሌዳው ላይ የሉም።",
+    "joinFromProfile": "ከመገለጫዎ ይቀላቀሉ",
+    "privateUntil": "— እስከዚያ ድረስ አስተዋፅዖዎ በግል ይቆያል።",
+    "signInToEarn": "ለታሪፍ እርማቶች ነጥብ ማግኘት ለመጀመር።"
+  },
+  "notFound": {
+    "eyebrow": "ፌርማታው አልተገኘም",
+    "title": "ይህ ፌርማታ በካርታው ላይ የለም",
+    "description": "የሚፈልጉት ገጽ የለም፣ ወይም መስመሩ ተቀይሯል። ወደ የአዲስ አበባ ትራንስፖርት ካርታ ይመለሱ።",
+    "searchRoutes": "መስመሮችን ፈልግ",
+    "needConsole": "የአስተዳደር ኮንሶል ይፈልጋሉ?"
+  }
+}

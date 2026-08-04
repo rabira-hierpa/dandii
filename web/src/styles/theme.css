@@ -1,8 +1,11 @@
 @theme {
     /* FONT FAMILY */
-    --font-body: var(--font-inter, "Inter"), -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    /* Noto Sans Ethiopic sits after the Latin faces in every stack: Inter and
+       Poppins carry no Ge'ez glyphs, so Amharic would render as tofu without a
+       fallback the browser can reach for per-glyph. */
+    --font-body: var(--font-inter, "Inter"), var(--font-noto-ethiopic, "Noto Sans Ethiopic"), -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
     /* Brand / display face — Poppins (same free face as rz-codes.com). */
-    --font-display: var(--font-poppins, "Poppins"), -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    --font-display: var(--font-poppins, "Poppins"), var(--font-noto-ethiopic, "Noto Sans Ethiopic"), -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
     --font-mono: var(--font-plex-mono, "IBM Plex Mono"), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 
     /* FONT SIZE */

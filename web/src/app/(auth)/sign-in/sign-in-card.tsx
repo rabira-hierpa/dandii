@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/base/buttons/button";
 import { DandiiLogo } from "@/components/foundations/logo/dandii-logo";
 import { authClient } from "@/lib/auth-client";
@@ -29,6 +30,7 @@ const GoogleIcon = () => (
 );
 
 export function SignInCard() {
+  const t = useTranslations("auth");
   const searchParams = useSearchParams();
   const callbackURL = searchParams.get("callbackURL") ?? "/console";
   const [pending, setPending] = useState(false);
@@ -55,16 +57,15 @@ export function SignInCard() {
 
       <span className="status-rise-delay-2 inline-flex w-fit items-center gap-2 rounded-full bg-brand-700/10 px-2.5 py-1 font-mono text-xs font-semibold tracking-wide text-brand-700">
         <span className="status-pulse relative size-1.5 rounded-full bg-brand-700" />
-        Welcome back
+        {t("welcomeBack")}
       </span>
 
       <div className="status-rise-delay-3 flex flex-col gap-2">
         <h1 className="font-display text-display-sm font-bold tracking-tight text-primary max-sm:text-display-xs">
-          Sign in to Dandii
+          {t("title")}
         </h1>
         <p className="max-w-prose text-md leading-relaxed text-tertiary">
-          Save routes, suggest fare corrections, and track your contributions to
-          the Addis transit map.
+          {t("subtitle")}
         </p>
       </div>
 
@@ -77,7 +78,7 @@ export function SignInCard() {
           isDisabled={pending}
           iconLeading={GoogleIcon}
         >
-          {pending ? "Redirecting…" : "Continue with Google"}
+          {pending ? t("redirecting") : t("continueWithGoogle")}
         </Button>
         {error && (
           <p role="alert" className="text-sm text-error-primary">
@@ -85,17 +86,17 @@ export function SignInCard() {
           </p>
         )}
         <p className="text-xs leading-relaxed text-quaternary">
-          Operations console access is granted by an administrator.
+          {t("consoleNote")}
         </p>
       </div>
 
       <p className="status-rise-delay-5 text-sm text-quaternary">
-        Just exploring?{" "}
+        {t("justExploring")}{" "}
         <Link
           href="/"
           className="font-semibold text-brand-700 hover:text-brand-800"
         >
-          Browse the map
+          {t("browseMap")}
         </Link>
       </p>
     </div>

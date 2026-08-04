@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
-import { IBM_Plex_Mono, Inter, Poppins } from "next/font/google";
+import { IBM_Plex_Mono, Inter, Noto_Sans_Ethiopic, Poppins } from "next/font/google";
 import { GoogleAnalytics } from "@next/third-parties/google";
+import { NextIntlClientProvider } from "next-intl";
+import { getLocale } from "next-intl/server";
 import { JsonLd } from "@/components/seo/json-ld";
 import { SITE, siteUrl } from "@/lib/site";
 import "@/styles/globals.css";
@@ -20,6 +22,15 @@ const plexMono = IBM_Plex_Mono({
   variable: "--font-plex-mono",
   weight: ["400", "500", "600"],
   subsets: ["latin"],
+});
+
+// Poppins/Inter have no Ge'ez glyphs, so Amharic would render as tofu boxes
+// without this. Loaded for every locale so mixed content (an Amharic stop name
+// on an English page) still renders.
+const notoEthiopic = Noto_Sans_Ethiopic({
+  variable: "--font-noto-ethiopic",
+  weight: ["400", "500", "600", "700"],
+  subsets: ["ethiopic"],
 });
 
 const url = siteUrl();
@@ -107,16 +118,17 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   const gaId = process.env.G4A_TAG;
+  const locale = await getLocale();
   return (
     <html
-      lang="en"
-      className={`${inter.variable} ${poppins.variable} ${plexMono.variable} h-full antialiased`}
+      lang={locale}
+      className={`${inter.variable} ${poppins.variable} ${plexMono.variable} ${notoEthiopic.variable} h-full antialiased`}
     >
       <head>
         <link rel="llms" href="/llms.txt" />
@@ -124,7 +136,7 @@ export default function RootLayout({
       </head>
       <body className="flex min-h-full flex-col">
         <JsonLd />
-        {children}
+        <NextIntlClientProvider>{children}</NextIntlClientProvider>
         {gaId ? <GoogleAnalytics gaId={gaId} /> : null}
       </body>
     </html>

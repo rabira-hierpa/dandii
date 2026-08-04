@@ -1,0 +1,129 @@
+{
+  "common": {
+    "backToMap": "Back to map",
+    "signIn": "Sign in",
+    "signOut": "Log out",
+    "cancel": "Cancel",
+    "save": "Save",
+    "saving": "Saving…",
+    "close": "Close",
+    "language": "Language"
+  },
+  "map": {
+    "searchPlaceholder": "Search routes and stops",
+    "searchPlaceholderMobile": "Search Addis transit",
+    "explore": "Explore",
+    "directions": "Directions",
+    "routes": "Routes",
+    "stops": "Stops",
+    "noResults": "No routes or stops found.",
+    "stopsCount": "{count} stops",
+    "transitLayers": "Transit layers",
+    "transitLayersHint": "Show or hide each agency's network",
+    "myLocation": "My location",
+    "backToResults": "Back to results",
+    "saved": "Saved",
+    "recent": "Recent",
+    "submissions": "Fare submissions"
+  },
+  "directions": {
+    "chooseStart": "Choose start point",
+    "chooseDestination": "Choose destination",
+    "useMyLocation": "Use my location",
+    "getDirections": "Directions",
+    "planning": "Planning…",
+    "swap": "Swap start and destination",
+    "noRoute": "No route between these places. Try nearby stops, or a stop on a major corridor.",
+    "unavailable": "Journey planner is unavailable right now.",
+    "requiresTransfer": "Requires a transfer",
+    "ride": "{minutes} ride",
+    "stops": "{count} stops",
+    "walk": "{meters} m walk",
+    "every": "every ~{minutes} min",
+    "transfers": "{count, plural, one {# transfer} other {# transfers}}",
+    "fare": "≈ {amount} ETB"
+  },
+  "fare": {
+    "question": "What is the current fare on {route}?",
+    "flat": "Flat",
+    "tiered": "Tiered",
+    "submit": "Suggest correction",
+    "submitting": "Sending…",
+    "thanks": "Thanks — a maintainer will review your edit.",
+    "signInFirst": "Sign in to suggest a fare correction"
+  },
+  "auth": {
+    "welcomeBack": "Welcome back",
+    "title": "Sign in to Dandii",
+    "subtitle": "Save routes, suggest fare corrections, and track your contributions to the Addis transit map.",
+    "continueWithGoogle": "Continue with Google",
+    "redirecting": "Redirecting…",
+    "consoleNote": "Operations console access is granted by an administrator.",
+    "justExploring": "Just exploring?",
+    "browseMap": "Browse the map"
+  },
+  "profile": {
+    "title": "Profile",
+    "savedRoutes": "Saved routes",
+    "fareEdits": "Fare edits",
+    "approved": "Approved",
+    "submittedFares": "Submitted fares",
+    "submittedFaresHint": "Select an edit to see the route and what you changed.",
+    "noSubmissions": "No fare edits yet — open any route on the map and suggest a correction when the posted fare has changed.",
+    "awaitingReview": "{count} awaiting review",
+    "fareChange": "Fare change",
+    "noFareOnRecord": "No fare on record",
+    "yourNote": "Your note",
+    "reviewerNote": "Reviewer note",
+    "submittedOn": "Submitted {date}",
+    "viewOnMap": "View {route} on the map",
+    "openConsole": "Open operations console",
+    "displayName": "Display name"
+  },
+  "status": {
+    "pending": "Pending",
+    "approved": "Approved",
+    "rejected": "Rejected",
+    "superseded": "Resolved"
+  },
+  "rewards": {
+    "myContributions": "My Contributions",
+    "level": "Level {level}",
+    "points": "points",
+    "toNextLevel": "{points} points to level {level}",
+    "topLevel": "Top level reached — thank you for keeping Addis fares accurate.",
+    "impact": "{approved, plural, one {# approved fare is} other {# approved fares are}} live on {routes, plural, one {# route} other {# routes}}.",
+    "getStarted": "Suggest a fare correction from any route to start earning points.",
+    "streak": "{weeks}-week streak",
+    "streakHint": "keep it alive with an edit this week.",
+    "showOnLeaderboard": "Show me on the public leaderboard",
+    "leaderboardOn": "Your name, level, and points are visible to everyone.",
+    "leaderboardOff": "Off — you contribute privately. Only you see your points.",
+    "titles": {
+      "newcomer": "Newcomer",
+      "fareSpotter": "Fare Spotter",
+      "fareScout": "Fare Scout",
+      "routeRanger": "Route Ranger",
+      "transitGuardian": "Transit Guardian",
+      "transitLegend": "Transit Legend"
+    }
+  },
+  "leaderboard": {
+    "title": "Fare Scouts",
+    "subtitle": "Riders keeping Addis fares accurate. Ranked by points earned from approved fare corrections.",
+    "empty": "No one has joined the leaderboard yet. Submit a fare correction and opt in from your profile to be the first.",
+    "you": "you",
+    "approvedCount": "{count} approved",
+    "notListed": "You're not on the leaderboard.",
+    "joinFromProfile": "Join it from your profile",
+    "privateUntil": "— your contributions stay private until you do.",
+    "signInToEarn": "to start earning points for fare corrections."
+  },
+  "notFound": {
+    "eyebrow": "Stop not found",
+    "title": "This stop isn't on the map",
+    "description": "The page you're looking for doesn't exist, or the route moved. Jump back to the live Addis transit map.",
+    "searchRoutes": "Search routes",
+    "needConsole": "Need the ops console?"
+  }
+}

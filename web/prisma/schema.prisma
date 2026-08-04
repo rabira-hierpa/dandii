@@ -36,6 +36,10 @@ model User {
   points       Int            @default(0)
   pointsLedger PointsLedger[]
   badges       UserBadge[]
+  /// R2: appear on the public contributor leaderboard. Off by default —
+  /// showing a real name publicly is the user's choice, never a side effect
+  /// of contributing.
+  leaderboardOptIn Boolean @default(false)
 
   @@unique([email])
   @@map("user")

@@ -1,5 +1,85 @@
 import { describe, expect, it } from "vitest";
-import { COUNT_BADGES, LEVELS, POINTS, levelForPoints } from "./points";
+import {
+  BADGE_LABELS,
+  COUNT_BADGES,
+  LEVELS,
+  OPERATOR_SPREAD_BADGE,
+  POINTS,
+  STREAK_BADGE,
+  computeStreakWeeks,
+  levelForPoints,
+  weekIndex,
+} from "./points";
+
+/** A fixed "now" so streak tests never depend on the real calendar. */
+const NOW = new Date("2026-08-02T12:00:00.000Z");
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+/** A date N whole weeks before NOW. */
+const weeksAgo = (n: number) => new Date(NOW.getTime() - n * WEEK_MS);
+
+describe("weekIndex", () => {
+  it("is stable within a week and increments across weeks", () => {
+    expect(weekIndex(NOW)).toBe(weekIndex(new Date(NOW.getTime() + 3600_000)));
+    expect(weekIndex(weeksAgo(1))).toBe(weekIndex(NOW) - 1);
+    expect(weekIndex(weeksAgo(5))).toBe(weekIndex(NOW) - 5);
+  });
+});
+
+describe("computeStreakWeeks", () => {
+  it("is 0 with no contributions", () => {
+    expect(computeStreakWeeks([], NOW)).toBe(0);
+  });
+
+  it("counts consecutive weeks ending this week", () => {
+    const dates = [weeksAgo(0), weeksAgo(1), weeksAgo(2)];
+    expect(computeStreakWeeks(dates, NOW)).toBe(3);
+  });
+
+  it("stays alive when the latest contribution was last week (grace week)", () => {
+    expect(computeStreakWeeks([weeksAgo(1), weeksAgo(2)], NOW)).toBe(2);
+  });
+
+  it("resets to 0 after two missed weeks", () => {
+    expect(computeStreakWeeks([weeksAgo(2), weeksAgo(3)], NOW)).toBe(0);
+  });
+
+  it("stops at the first gap rather than counting total weeks", () => {
+    // this week, last week, then a gap at 2, resuming at 3-4
+    const dates = [weeksAgo(0), weeksAgo(1), weeksAgo(3), weeksAgo(4)];
+    expect(computeStreakWeeks(dates, NOW)).toBe(2);
+  });
+
+  it("counts several contributions in one week only once", () => {
+    const sameWeek = [
+      weeksAgo(0),
+      new Date(NOW.getTime() - 3600_000),
+      new Date(NOW.getTime() - 7200_000),
+    ];
+    expect(computeStreakWeeks(sameWeek, NOW)).toBe(1);
+  });
+
+  it("is order-independent", () => {
+    const shuffled = [weeksAgo(2), weeksAgo(0), weeksAgo(1)];
+    expect(computeStreakWeeks(shuffled, NOW)).toBe(3);
+  });
+});
+
+describe("R2 milestone badges", () => {
+  it("rewards breadth across operators, not one corridor", () => {
+    expect(OPERATOR_SPREAD_BADGE.operatorsRequired).toBeGreaterThan(1);
+    expect(OPERATOR_SPREAD_BADGE.bonus).toBeGreaterThan(0);
+  });
+
+  it("requires a multi-week habit for the streak badge", () => {
+    expect(STREAK_BADGE.weeksRequired).toBeGreaterThan(1);
+  });
+
+  it("exposes a label for every badge id", () => {
+    for (const b of COUNT_BADGES) expect(BADGE_LABELS[b.badge]).toBeTruthy();
+    expect(BADGE_LABELS[OPERATOR_SPREAD_BADGE.badge]).toBeTruthy();
+    expect(BADGE_LABELS[STREAK_BADGE.badge]).toBeTruthy();
+  });
+});
 
 describe("POINTS values", () => {
   it("rewards approval far more than submission (anti-spam design rule)", () => {

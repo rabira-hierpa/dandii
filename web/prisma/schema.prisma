@@ -118,6 +118,17 @@ enum ClosureReason {
   OTHER
 }
 
+/**
+ * How much of a route a closure takes out, and whether vehicles can pass.
+ * SEVERED and SKIPPED carry the same data (a closed stop range) and differ only
+ * in whether through-travel across that range is still possible.
+ */
+enum ClosureKind {
+  WHOLE_ROUTE // entire route out of service (the historical behaviour)
+  SEVERED // road blocked: nothing crosses, so the route is cut in two
+  SKIPPED // vehicle detours: through-travel fine, listed stops not served
+}
+
 model Agency {
   id       String  @id
   name     String
@@ -268,6 +279,16 @@ model RouteClosure {
   createdById String
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
+
+  // Partial closures. We store the CLOSED range rather than the open one: a
+  // route has two trips with opposite stop order, and a closed range resolves
+  // correctly against both, whereas "open up to X" needs a direction to mean
+  // anything. Null on both = WHOLE_ROUTE (existing rows are untouched).
+  kind       ClosureKind @default(WHOLE_ROUTE)
+  /// First stop of the closed range, inclusive.
+  fromStopId String?
+  /// Last stop of the closed range, inclusive.
+  toStopId   String?
 
   @@index([routeId, startsAt, endsAt])
   @@map("route_closure")

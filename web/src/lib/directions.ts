@@ -21,6 +21,7 @@
 import length from "@turf/length";
 import { lineString } from "@turf/helpers";
 import { decodePolyline } from "@/components/map/polyline";
+import { isPairClosed, type ClosureRange } from "@/lib/closures";
 import type {
   DirectionsAnchor,
   DirectRoute,
@@ -298,6 +299,70 @@ export async function findDirectRoutes(
   `;
   if (rows.length === 0) return [];
 
+  // --- Closure enforcement -------------------------------------------------
+  // Drop (board, alight) pairs that an active closure makes unrideable. Until
+  // this existed, closures only tagged results and the planner still offered
+  // them, so a fully closed route was still recommended.
+  const candidateRouteIds = [...new Set(rows.map((r) => r.routeId))];
+  const nowTs = new Date();
+  const activeClosures = await prisma.routeClosure.findMany({
+    where: {
+      routeId: { in: candidateRouteIds },
+      startsAt: { lte: nowTs },
+      endsAt: { gte: nowTs },
+    },
+    select: { routeId: true, kind: true, fromStopId: true, toStopId: true },
+  });
+
+  let openRows = rows;
+  if (activeClosures.length > 0) {
+    const closuresByRoute = new Map<string, ClosureRange[]>();
+    for (const c of activeClosures) {
+      const list = closuresByRoute.get(c.routeId) ?? [];
+      list.push({
+        kind: c.kind as ClosureRange["kind"],
+        fromStopId: c.fromStopId,
+        toStopId: c.toStopId,
+      });
+      closuresByRoute.set(c.routeId, list);
+    }
+
+    // Sequence numbers of every closure boundary stop, per candidate trip —
+    // a closed range is stored as stop ids so it resolves on both directions.
+    const boundaryStopIds = [
+      ...new Set(
+        activeClosures.flatMap((c) =>
+          [c.fromStopId, c.toStopId].filter((s): s is string => Boolean(s)),
+        ),
+      ),
+    ];
+    const seqByTrip = new Map<string, Map<string, number>>();
+    if (boundaryStopIds.length > 0) {
+      const tripIds = [...new Set(rows.map((r) => r.tripId))];
+      const boundaryRows = await prisma.$queryRaw<
+        { tripId: string; stopId: string; sequence: number }[]
+      >`
+        SELECT st."tripId" AS "tripId", st."stopId" AS "stopId",
+               st.sequence AS "sequence"
+        FROM stop_time st
+        WHERE st."tripId" = ANY(${tripIds}) AND st."stopId" = ANY(${boundaryStopIds})
+      `;
+      for (const b of boundaryRows) {
+        const m = seqByTrip.get(b.tripId) ?? new Map<string, number>();
+        m.set(b.stopId, b.sequence);
+        seqByTrip.set(b.tripId, m);
+      }
+    }
+
+    openRows = rows.filter((row) => {
+      const closures = closuresByRoute.get(row.routeId);
+      if (!closures) return true;
+      const seqMap = seqByTrip.get(row.tripId) ?? new Map<string, number>();
+      return !isPairClosed(closures, seqMap, row.boardSeq, row.alightSeq);
+    });
+    if (openRows.length === 0) return [];
+  }
+
   // Per route, keep the single best (board, alight, trip) by total time.
   interface Best {
     row: MatchRow;
@@ -309,7 +374,7 @@ export async function findDirectRoutes(
     totalSecs: number;
   }
   const bestByRoute = new Map<string, Best>();
-  for (const row of rows) {
+  for (const row of openRows) {
     const board = originById.get(row.boardStop);
     const alight = destById.get(row.alightStop);
     if (!board || !alight) continue;

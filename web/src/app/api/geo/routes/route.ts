@@ -125,6 +125,19 @@ async function trySplitRoute(
   if (!closure.fromStopId || !closure.toStopId || !route.geojsonSimplified) {
     return null;
   }
+
+  // Slice the FULL shape, not `geojsonSimplified`. Simplification leaves ~500m
+  // between vertices, so neighbouring stops collapse onto one vertex (i === j)
+  // and sit hundreds of metres off it — the snap fails and every partial
+  // closure over-paints as a whole-route closure. Only the handful of
+  // partially closed routes pay for the extra resolution.
+  const full = await prisma.route.findUnique({
+    where: { id: route.id },
+    select: { geojson: true },
+  });
+  const coords = (full?.geojson as GeoJSON.LineString | null)?.coordinates;
+  if (!coords || coords.length < 2) return null;
+
   const trip = await prisma.trip.findFirst({
     where: { routeId: route.id },
     orderBy: { id: "asc" },
@@ -154,7 +167,7 @@ async function trySplitRoute(
   if (!fromStop || !toStop) return null;
 
   return splitShapeByClosureWindow(
-    route.geojsonSimplified.coordinates,
+    coords,
     { lat: fromStop.lat, lon: fromStop.lon },
     { lat: toStop.lat, lon: toStop.lon },
   );

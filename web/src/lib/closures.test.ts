@@ -191,6 +191,77 @@ describe("closedStopIds", () => {
   });
 });
 
+describe("splitShapeByClosureWindow", () => {
+  const LAT0 = 9.0;
+  const LON0 = 38.8;
+  /** A straight north-south line of `n` vertices, `spacingM` apart. */
+  const line = (n: number, spacingM: number): number[][] =>
+    Array.from({ length: n }, (_, i) => [
+      LON0,
+      LAT0 + (i * spacingM) / 110_574,
+    ]);
+  const vertex = (coords: number[][], i: number) => ({
+    lon: coords[i][0],
+    lat: coords[i][1],
+  });
+
+  it("slices a dense shape into the open sides and the closed middle", async () => {
+    const { splitShapeByClosureWindow } = await import("./closures");
+    const coords = line(100, 50);
+    const split = splitShapeByClosureWindow(
+      coords,
+      vertex(coords, 40),
+      vertex(coords, 60),
+    );
+    expect(split).not.toBeNull();
+    expect(split!.closed).toHaveLength(21); // 40…60 inclusive
+    expect(split!.open).toHaveLength(2);
+    expect(split!.open[0]).toHaveLength(41); // 0…40
+    expect(split!.open[1]).toHaveLength(40); // 60…99
+  });
+
+  it("emits a single open side when the closure starts at the first stop", async () => {
+    const { splitShapeByClosureWindow } = await import("./closures");
+    const coords = line(100, 50);
+    const split = splitShapeByClosureWindow(
+      coords,
+      vertex(coords, 0),
+      vertex(coords, 30),
+    );
+    expect(split!.open).toHaveLength(1);
+    expect(split!.closed).toHaveLength(31);
+  });
+
+  /**
+   * Regression: partial closures must be sliced from the FULL route shape.
+   * `geojsonSimplified` leaves ~500m between vertices, so adjacent stops land
+   * on the same vertex and the split silently degrades to a whole-route
+   * closure — a 16km route painted shut for a two-stop disruption.
+   */
+  it("returns null when both stops collapse onto one vertex", async () => {
+    const { splitShapeByClosureWindow } = await import("./closures");
+    const sparse = line(32, 500);
+    const near = vertex(sparse, 10);
+    const split = splitShapeByClosureWindow(
+      sparse,
+      { lat: near.lat + 0.0005, lon: near.lon },
+      { lat: near.lat - 0.0005, lon: near.lon },
+    );
+    expect(split).toBeNull();
+  });
+
+  it("returns null when a stop sits beyond the snap tolerance", async () => {
+    const { splitShapeByClosureWindow } = await import("./closures");
+    const coords = line(100, 50);
+    const split = splitShapeByClosureWindow(
+      coords,
+      { lat: LAT0, lon: LON0 + 0.05 }, // ~5.5km off the line
+      vertex(coords, 60),
+    );
+    expect(split).toBeNull();
+  });
+});
+
 describe("itineraryTouchesSkippedStops", () => {
   it("flags a transit board/alight at a skipped stop name", async () => {
     const { itineraryTouchesSkippedStops } = await import("./closures");

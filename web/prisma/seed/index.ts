@@ -10,6 +10,7 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient, Prisma } from "../../src/generated/prisma/client";
 import type { OperatorCode } from "../../src/generated/prisma/enums";
+import { applyOverrides } from "./apply-overrides";
 import { buildRouteGeometry, groupShapes } from "./build-geojson";
 import {
   readGtfsFile,
@@ -322,6 +323,19 @@ async function main() {
   } else {
     console.log("Skipping default-fare seed (existing fares preserved).");
   }
+
+  // Last step, deliberately: the import above reloads the feed verbatim and
+  // would otherwise discard every console correction. Replaying overrides here
+  // makes a reseed reproduce the edited state rather than the raw feed.
+  console.log("Re-applying operator overrides…");
+  const overrides = await applyOverrides(prisma);
+  console.log(
+    `  ${overrides.stopsRenamed} stops renamed, ${overrides.routesEdited} routes edited, ` +
+      `${overrides.operatorsReassigned} operators reassigned` +
+      (overrides.skipped > 0
+        ? `, ${overrides.skipped} kept but not applied (id absent from this feed)`
+        : ""),
+  );
 
   const counts = {
     agencies: await prisma.agency.count(),

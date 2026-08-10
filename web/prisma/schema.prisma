@@ -41,6 +41,10 @@ model User {
   /// of contributing.
   leaderboardOptIn Boolean @default(false)
 
+  /// Batch D: GTFS corrections this user made (audit trail for the editor).
+  stopOverrides  StopOverride[]
+  routeOverrides RouteOverride[]
+
   @@unique([email])
   @@map("user")
 }
@@ -305,6 +309,57 @@ model RouteAssignment {
 
   @@index([operatorId])
   @@map("route_assignment")
+}
+
+// ---------------------------------------------------------------------------
+// Operator edits to the vendored GTFS feed.
+//
+// We never mutate the seeded GTFS rows in place: a reseed would wipe the edit,
+// and we'd lose the base-vs-edit distinction that lets an operator see what
+// they changed. Instead each edit is an override row that survives reseed and
+// is re-applied as the seed's final step. A null field means "not edited" and
+// falls back to the base feed value, so an override row can carry one
+// correction without freezing every other field.
+//
+// The GTFS export regenerates the edited tables from base + overrides rather
+// than copying them verbatim (see docs/route-editor-design.md §3).
+// ---------------------------------------------------------------------------
+
+/// A stop-level correction. Today only the name; the DT4A feed has many
+/// near-duplicate stop names ("Megenagna", "Megenagna Taxi") that operators
+/// need to fix without touching geometry.
+/// NOTE: `stopId` is deliberately NOT a foreign key to `stop`. The seed does a
+/// full `stop.deleteMany()` before reloading the feed, so a cascading FK would
+/// wipe every override on each reseed — the exact opposite of the point. The
+/// override outlives the row it annotates and is re-applied afterwards; a
+/// stopId that no longer exists in a newer feed is simply ignored on apply.
+model StopOverride {
+  stopId     String   @id
+  name       String?
+  editedById String
+  editedBy   User     @relation(fields: [editedById], references: [id])
+  editedAt   DateTime @updatedAt
+
+  @@map("stop_override")
+}
+
+/// A route-level correction: display names, map colors, and operator
+/// reassignment (which drives the per-operator `agency_id` in the export).
+/// Same no-FK rule as [StopOverride]: routes are normally upserted by the seed,
+/// but the fresh-reseed path does `route.deleteMany()`, and overrides must
+/// survive that.
+model RouteOverride {
+  routeId      String        @id
+  shortName    String?
+  longName     String?
+  color        String?
+  textColor    String?
+  operatorCode OperatorCode?
+  editedById   String
+  editedBy     User          @relation(fields: [editedById], references: [id])
+  editedAt     DateTime      @updatedAt
+
+  @@map("route_override")
 }
 
 // ---------------------------------------------------------------------------

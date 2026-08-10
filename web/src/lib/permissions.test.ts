@@ -42,3 +42,27 @@ describe("role matrix (T3)", () => {
     expect(ASSIGNABLE_ROLES.admin).not.toContain("super-admin");
   });
 });
+
+/** docs/route-editor-design.md §5. */
+describe("feed-edit matrix (Batch D)", () => {
+  it("lets super-admin, admin and route-operator correct the feed", () => {
+    for (const role of ["super-admin", "admin", "route-operator"] as const) {
+      const feedEdit = roles[role].statements.feedEdit;
+      expect(feedEdit).toContain("edit"); // route fields (5a)
+      expect(feedEdit).toContain("rename"); // stop names (5c-rename)
+      expect(feedEdit).toContain("shape"); // sequence + geometry (5b/5c)
+    }
+  });
+
+  it("reserves publish for admin and above", () => {
+    // Publishing reseeds the DB and rebuilds the OTP graph — it hits every rider.
+    expect(roles["super-admin"].statements.feedEdit).toContain("publish");
+    expect(roles.admin.statements.feedEdit).toContain("publish");
+    expect(roles["route-operator"].statements.feedEdit).not.toContain("publish");
+  });
+
+  it("keeps maintainers and citizens out of feed editing entirely", () => {
+    expect("feedEdit" in roles.maintainer.statements).toBe(false);
+    expect("feedEdit" in roles.user.statements).toBe(false);
+  });
+});

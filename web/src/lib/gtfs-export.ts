@@ -10,6 +10,12 @@ import {
   selectFlatFares,
   type FlatFare,
 } from "@/lib/gtfs-fares-format";
+import {
+  applyRouteOverridesToCsv,
+  applyStopOverridesToCsv,
+  type RouteFieldOverride,
+  type StopNameOverride,
+} from "@/lib/gtfs-overrides";
 import { prisma } from "@/lib/prisma";
 
 /**
@@ -61,12 +67,44 @@ const REPLACED = new Set([
   "fare_rules.txt",
 ]);
 
+/**
+ * Operator corrections to fold into the exported feed. Empty when nothing has
+ * been edited, which is the common case — the tables are then copied verbatim.
+ */
+interface FeedOverrides {
+  stops: StopNameOverride[];
+  routes: RouteFieldOverride[];
+}
+
+async function loadFeedOverrides(): Promise<FeedOverrides> {
+  const [stopRows, routeRows] = await Promise.all([
+    prisma.stopOverride.findMany({
+      where: { name: { not: null } },
+      select: { stopId: true, name: true },
+    }),
+    prisma.routeOverride.findMany({
+      select: {
+        routeId: true,
+        shortName: true,
+        longName: true,
+        color: true,
+        textColor: true,
+      },
+    }),
+  ]);
+  return {
+    stops: stopRows.map((s) => ({ stopId: s.stopId, name: s.name as string })),
+    routes: routeRows,
+  };
+}
+
 /** Copy the base feed + overlay the three generated files into `filePath`. */
 async function buildZip(
   filePath: string,
   baseDir: string,
   version: number,
   fares: FlatFare[],
+  overrides: FeedOverrides,
 ): Promise<void> {
   const output = createWriteStream(filePath);
   const archive = new ZipArchive({ zlib: { level: 9 } });
@@ -79,9 +117,29 @@ async function buildZip(
 
   archive.pipe(output);
 
+  // Tables with operator edits are rewritten from base + overrides; everything
+  // else is streamed straight from disk, so an unedited feed costs nothing.
+  const edited = new Map<string, (base: string) => string>();
+  if (overrides.stops.length > 0) {
+    edited.set("stops.txt", (base) =>
+      applyStopOverridesToCsv(base, overrides.stops),
+    );
+  }
+  if (overrides.routes.length > 0) {
+    edited.set("routes.txt", (base) =>
+      applyRouteOverridesToCsv(base, overrides.routes),
+    );
+  }
+
   const entries = await readdir(baseDir);
   for (const name of entries) {
     if (!name.endsWith(".txt") || REPLACED.has(name)) continue;
+    const rewrite = edited.get(name);
+    if (rewrite) {
+      const base = await readFile(path.join(baseDir, name), "utf8");
+      archive.append(rewrite(base), { name });
+      continue;
+    }
     archive.file(path.join(baseDir, name), { name });
   }
 
@@ -154,6 +212,7 @@ export async function generateFeedVersion(
       flatAmountEtb: f.flatAmountEtb?.toNumber() ?? null,
     })),
   );
+  const overrides = await loadFeedOverrides();
   const baseRouteIds = await readBaseRouteIds(baseDir);
   const fares: FlatFare[] = allFlat.filter((f) => baseRouteIds.has(f.routeId));
 
@@ -189,7 +248,7 @@ export async function generateFeedVersion(
       fareChangeCount = await prisma.fareChangeLog.count();
     }
 
-    await buildZip(filePath, baseDir, version, fares);
+    await buildZip(filePath, baseDir, version, fares, overrides);
     const { size } = await stat(filePath);
 
     try {

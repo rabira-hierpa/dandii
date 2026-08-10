@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  closedStopIds,
   closedWindow,
   describeClosure,
   isPairBlocked,
@@ -144,11 +145,79 @@ describe("describeClosure", () => {
     expect(s).toContain("Stadium, Legehar and Mexico");
   });
 
+  it("names both islands for a mid-route SEVERED cut", () => {
+    const s = describeClosure(severedMiddle, STOPS);
+    expect(s).toContain("cut in two");
+    expect(s).toContain("Megenagna");
+    expect(s).toContain("Mexico");
+  });
+
+  it("names the usable tail when the head is severed", () => {
+    const head: ClosureRange = {
+      kind: "SEVERED",
+      fromStopId: "megenagna",
+      toStopId: "mazoria22",
+    };
+    const s = describeClosure(head, STOPS);
+    expect(s).toContain("Stadium");
+    expect(s).toContain("Mexico");
+  });
+
   it("says the route still runs when stops are skipped", () => {
     expect(describeClosure(skippedMiddle, STOPS)).toContain("skip");
   });
 
   it("describes a whole-route closure plainly", () => {
     expect(describeClosure(wholeRoute, STOPS)).toContain("whole route");
+  });
+});
+
+describe("otpBannedRouteGtfsIds", () => {
+  it("prefixes route ids with the feed scope", async () => {
+    const { otpBannedRouteGtfsIds } = await import("./closures");
+    expect(otpBannedRouteGtfsIds(["104", "105"])).toBe("1:104,1:105");
+  });
+});
+
+describe("closedStopIds", () => {
+  it("returns every stop for a whole-route closure", () => {
+    expect([...closedStopIds(wholeRoute, STOPS)]).toEqual(STOPS.map((s) => s.id));
+  });
+
+  it("returns only the closed window for a partial closure", () => {
+    expect([...closedStopIds(severedTail, STOPS)].sort()).toEqual(
+      ["stadium", "legehar", "mexico"].sort(),
+    );
+  });
+});
+
+describe("itineraryTouchesSkippedStops", () => {
+  it("flags a transit board/alight at a skipped stop name", async () => {
+    const { itineraryTouchesSkippedStops } = await import("./closures");
+    const skipped = new Set(["stadium"]);
+    expect(
+      itineraryTouchesSkippedStops(
+        [
+          {
+            mode: "BUS",
+            from: { name: "Megenagna" },
+            to: { name: "Stadium" },
+          },
+        ],
+        skipped,
+      ),
+    ).toBe(true);
+    expect(
+      itineraryTouchesSkippedStops(
+        [
+          {
+            mode: "BUS",
+            from: { name: "Megenagna" },
+            to: { name: "Mexico" },
+          },
+        ],
+        skipped,
+      ),
+    ).toBe(false);
   });
 });

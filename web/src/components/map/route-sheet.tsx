@@ -7,12 +7,14 @@ import {
   X as CloseX,
   Edit04,
   Share06,
+  XCircle,
 } from "@untitledui/icons";
 import { RouteChip } from "@/components/console/route-chip";
 import {
   Tooltip,
   TooltipTrigger,
 } from "@/components/base/tooltip/tooltip";
+import { closedStopIds } from "@/lib/closures";
 import {
   CLOSURE_REASON_LABELS,
   type ClosureReasonValue,
@@ -59,6 +61,18 @@ export function RouteSheet({
     [selectedRoute],
   );
 
+  const temporarilyClosedStopIds = useMemo(() => {
+    if (!detail.closure) return new Set<string>();
+    return closedStopIds(
+      {
+        kind: detail.closure.kind ?? "WHOLE_ROUTE",
+        fromStopId: detail.closure.fromStopId ?? null,
+        toStopId: detail.closure.toStopId ?? null,
+      },
+      detail.stops,
+    );
+  }, [detail.closure, detail.stops]);
+
   const copyShare = async () => {
     if (!shareUrl) return;
     await navigator.clipboard.writeText(shareUrl);
@@ -97,12 +111,17 @@ export function RouteSheet({
         {detail.closure && (
           <div className="rounded-lg border border-[#FCA5A5] bg-[#FEF2F2] px-3 py-2.5 text-[12.5px] text-[#991B1B]">
             <div className="font-bold">
-              Route closed —{" "}
+              {detail.closure.summary ??
+                (detail.closure.kind && detail.closure.kind !== "WHOLE_ROUTE"
+                  ? "Part of this route is disrupted"
+                  : "Route closed")}
+            </div>
+            <div className="mt-0.5">
               {CLOSURE_REASON_LABELS[
                 detail.closure.reason as ClosureReasonValue
               ] ?? detail.closure.reason}
+              {detail.closure.note ? ` — ${detail.closure.note}` : ""}
             </div>
-            {detail.closure.note && <div>{detail.closure.note}</div>}
             <div className="mt-0.5 text-[11.5px] opacity-75">
               until {new Date(detail.closure.endsAt).toLocaleString()}
             </div>
@@ -255,20 +274,52 @@ export function RouteSheet({
               Stops ({detail.stops.length})
             </div>
             <ol className="flex flex-col">
-              {detail.stops.map((stop, i) => (
-                <li
-                  key={`${stop.id}-${i}`}
-                  className="relative flex items-center gap-2.5 py-1 pl-0.5 text-[12.5px] text-[#3D4A3F]"
-                >
-                  <span className="relative flex h-full w-3 items-center justify-center">
-                    <span className="z-10 size-2 rounded-full border-2 border-[#15803D] bg-white" />
-                    {i < detail.stops.length - 1 && (
-                      <span className="absolute top-1/2 left-1/2 h-full w-0.5 -translate-x-1/2 bg-[#D6DCD0]" />
+              {detail.stops.map((stop, i) => {
+                const closed = temporarilyClosedStopIds.has(stop.id);
+                return (
+                  <li
+                    key={`${stop.id}-${i}`}
+                    className={cx(
+                      "relative flex items-center gap-2.5 py-1 pl-0.5 text-[12.5px]",
+                      closed ? "text-[#9A3412]" : "text-[#3D4A3F]",
                     )}
-                  </span>
-                  <span className="min-w-0 truncate">{stop.name}</span>
-                </li>
-              ))}
+                  >
+                    <span className="relative flex h-full w-3 items-center justify-center">
+                      <span
+                        className={cx(
+                          "z-10 size-2 rounded-full border-2 bg-white",
+                          closed ? "border-[#EA580C]" : "border-[#15803D]",
+                        )}
+                      />
+                      {i < detail.stops.length - 1 && (
+                        <span
+                          className={cx(
+                            "absolute top-1/2 left-1/2 h-full w-0.5 -translate-x-1/2",
+                            closed ? "bg-[#FDBA74]" : "bg-[#D6DCD0]",
+                          )}
+                        />
+                      )}
+                    </span>
+                    <span
+                      className={cx(
+                        "min-w-0 flex-1 truncate",
+                        closed && "line-through decoration-[#EA580C]/70",
+                      )}
+                    >
+                      {stop.name}
+                    </span>
+                    {closed && (
+                      <span
+                        className="inline-flex shrink-0 items-center gap-0.5 text-[10.5px] font-semibold text-[#C2410C]"
+                        title="Temporarily closed"
+                      >
+                        <XCircle className="size-3.5" aria-hidden />
+                        <span className="sr-only">Temporarily closed</span>
+                      </span>
+                    )}
+                  </li>
+                );
+              })}
             </ol>
           </div>
         )}

@@ -424,8 +424,7 @@ export async function findDirectRoutes(
       },
       closures: {
         where: { startsAt: { lte: now }, endsAt: { gte: now } },
-        select: { id: true },
-        take: 1,
+        select: { id: true, kind: true },
       },
     },
   });
@@ -587,7 +586,9 @@ export async function findDirectRoutes(
       rideKm: Number(rideKm.toFixed(2)),
       fareEtb,
       shape: d.shape,
-      closed: meta.closures.length > 0,
+      // Only whole-route outages mark the suggested ride as "closed". A
+      // partial closure that still allows this (board, alight) pair is open.
+      closed: meta.closures.some((c) => c.kind === "WHOLE_ROUTE"),
     };
   });
 

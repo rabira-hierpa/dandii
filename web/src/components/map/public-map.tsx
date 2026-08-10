@@ -39,6 +39,12 @@ import { BlueDotMarker } from "./markers";
 import { DandiiLogo } from "@/components/foundations/logo/dandii-logo";
 import { useTranslations } from "next-intl";
 import { LocaleToggle } from "@/components/foundations/locale-toggle";
+import {
+  closedStopIds,
+  closedWindow,
+  splitShapeByClosureWindow,
+  type ClosureRange,
+} from "@/lib/closures";
 import { ga } from "@/lib/gtag";
 import {
   ADDIS_CENTER,
@@ -648,17 +654,41 @@ export function PublicMap({ user, account }: PublicMapProps) {
     selectedRouteId && detail?.stops.length && !hasDirections,
   );
 
-  const detailGeojson = useMemo(
-    () =>
-      detail?.geojson
-        ? ({
-            type: "Feature",
-            geometry: detail.geojson,
-            properties: {},
-          } as GeoJSON.Feature)
-        : null,
-    [detail],
-  );
+  /**
+   * Selected-route overlay as open + closed features so only the disrupted
+   * stretch gets the dashed style (same split the network geo already emits).
+   */
+  const detailGeojson = useMemo((): GeoJSON.FeatureCollection | null => {
+    if (!selectedRouteId) return null;
+
+    const fromNetwork = (geojson?.features ?? []).filter(
+      (f) => f.properties?.routeId === selectedRouteId,
+    );
+    if (fromNetwork.length > 0) {
+      return { type: "FeatureCollection", features: fromNetwork };
+    }
+
+    if (!detail?.geojson) return null;
+    return {
+      type: "FeatureCollection",
+      features: selectedRouteFeaturesFromDetail(detail),
+    };
+  }, [selectedRouteId, geojson, detail]);
+
+  const selectedLineColor =
+    OPERATOR_META[detail?.operator?.code ?? "SHEGER"]?.color ?? "#15803D";
+
+  const selectedClosedStopIds = useMemo(() => {
+    if (!detail?.closure) return undefined;
+    return closedStopIds(
+      {
+        kind: detail.closure.kind ?? "WHOLE_ROUTE",
+        fromStopId: detail.closure.fromStopId ?? null,
+        toStopId: detail.closure.toStopId ?? null,
+      },
+      detail.stops,
+    );
+  }, [detail]);
 
   /**
    * The drawn journey: for a direct route, its ride line + two walk legs (to
@@ -1103,18 +1133,24 @@ export function PublicMap({ user, account }: PublicMapProps) {
               paint={{ "line-color": "#FFFFFF", "line-width": 8 }}
             />
             <Layer
-              id="selected-route-line"
+              id="selected-route-open"
               type="line"
+              filter={["!=", ["get", "closed"], true]}
               layout={{ "line-cap": "round", "line-join": "round" }}
               paint={{
-                "line-color": detail?.closure
-                  ? CLOSED_ROUTE_COLOR
-                  : (OPERATOR_META[detail?.operator?.code ?? "SHEGER"].color ??
-                    "#15803D"),
+                "line-color": selectedLineColor,
                 "line-width": 4.5,
-                ...(detail?.closure
-                  ? { "line-dasharray": [2, 1.5] as [number, number] }
-                  : {}),
+              }}
+            />
+            <Layer
+              id="selected-route-closed"
+              type="line"
+              filter={["==", ["get", "closed"], true]}
+              layout={{ "line-cap": "round", "line-join": "round" }}
+              paint={{
+                "line-color": CLOSED_ROUTE_COLOR,
+                "line-width": 4.5,
+                "line-dasharray": [2, 1.5],
               }}
             />
           </Source>
@@ -1133,6 +1169,7 @@ export function PublicMap({ user, account }: PublicMapProps) {
           variant="route"
           visible={showSelectedStops}
           onLine
+          closedStopIds={selectedClosedStopIds}
         />
 
         {/* Directions: the selected route's ride line + dotted walk legs. */}
@@ -1330,4 +1367,74 @@ export function PublicMap({ user, account }: PublicMapProps) {
       </BottomSheet>
     </div>
   );
+}
+
+/** Fallback when network geo isn't loaded yet — split detail shape client-side. */
+function selectedRouteFeaturesFromDetail(
+  detail: RouteDetail,
+): GeoJSON.Feature[] {
+  const geometry = detail.geojson;
+  if (!geometry) return [];
+
+  const closure = detail.closure;
+  if (!closure || closure.kind === "WHOLE_ROUTE" || !closure.kind) {
+    return [
+      {
+        type: "Feature",
+        geometry,
+        properties: {
+          routeId: detail.id,
+          closed: Boolean(closure),
+        },
+      },
+    ];
+  }
+
+  const range: ClosureRange = {
+    kind: closure.kind,
+    fromStopId: closure.fromStopId ?? null,
+    toStopId: closure.toStopId ?? null,
+  };
+  const seqById = new Map(detail.stops.map((s, i) => [s.id, i]));
+  const window = closedWindow(range, seqById);
+  const from = window ? detail.stops[window.start] : null;
+  const to = window ? detail.stops[window.end] : null;
+  if (!from || !to) {
+    return [
+      {
+        type: "Feature",
+        geometry,
+        properties: { routeId: detail.id, closed: true },
+      },
+    ];
+  }
+
+  const split = splitShapeByClosureWindow(
+    geometry.coordinates,
+    { lat: from.lat, lon: from.lon },
+    { lat: to.lat, lon: to.lon },
+  );
+  if (!split) {
+    return [
+      {
+        type: "Feature",
+        geometry,
+        properties: { routeId: detail.id, closed: true },
+      },
+    ];
+  }
+
+  const features: GeoJSON.Feature[] = split.open.map((coords, i) => ({
+    type: "Feature",
+    id: `${detail.id}:open:${i}`,
+    geometry: { type: "LineString", coordinates: coords },
+    properties: { routeId: detail.id, closed: false, segment: "open" },
+  }));
+  features.push({
+    type: "Feature",
+    id: `${detail.id}:closed`,
+    geometry: { type: "LineString", coordinates: split.closed },
+    properties: { routeId: detail.id, closed: true, segment: "closed" },
+  });
+  return features;
 }

@@ -95,6 +95,25 @@ export function isPairClosed(
 }
 
 /**
+ * Stop ids covered by a closure on one trip (trip order). Whole-route → every
+ * stop; partial → the inclusive closed window; unresolvable range → empty.
+ */
+export function closedStopIds(
+  closure: ClosureRange,
+  stops: { id: string }[],
+): Set<string> {
+  if (closure.kind === "WHOLE_ROUTE") {
+    return new Set(stops.map((s) => s.id));
+  }
+  const seqById = new Map(stops.map((s, i) => [s.id, i]));
+  const window = closedWindow(closure, seqById);
+  if (!window) return new Set();
+  return new Set(
+    stops.slice(window.start, window.end + 1).map((s) => s.id),
+  );
+}
+
+/**
  * Human sentence describing what a closure leaves usable, for the console
  * preview and the rider-facing banner. `stopNames` is in trip order.
  */
@@ -111,22 +130,124 @@ export function describeClosure(
   const closedNames = stopNames
     .slice(window.start, window.end + 1)
     .map((s) => s.name);
-  const openNames = [
-    ...stopNames.slice(0, window.start),
-    ...stopNames.slice(window.end + 1),
-  ].map((s) => s.name);
+  const before = stopNames.slice(0, window.start);
+  const after = stopNames.slice(window.end + 1);
 
   const closedList = formatList(closedNames);
   if (closure.kind === "SKIPPED") {
     return `Buses still run the full route but skip ${closedList}.`;
   }
-  // SEVERED: name the still-usable leg, which is what riders actually need.
-  const firstOpen = openNames[0];
-  const lastBeforeClosure = stopNames[window.start - 1]?.name;
-  if (firstOpen && lastBeforeClosure) {
-    return `Riders can still travel ${firstOpen} → ${lastBeforeClosure}. ${closedList} unavailable.`;
+
+  // SEVERED — name every still-usable island (tail / head / mid cut).
+  const leg = (stops: { name: string }[]) =>
+    stops.length === 0
+      ? null
+      : stops.length === 1
+        ? stops[0].name
+        : `${stops[0].name} → ${stops[stops.length - 1].name}`;
+
+  const beforeLeg = leg(before);
+  const afterLeg = leg(after);
+  if (beforeLeg && afterLeg) {
+    return `Route is cut in two: ${beforeLeg} and ${afterLeg}. ${closedList} unavailable.`;
+  }
+  if (beforeLeg) {
+    return `Riders can still travel ${beforeLeg}. ${closedList} unavailable.`;
+  }
+  if (afterLeg) {
+    return `Riders can still travel ${afterLeg}. ${closedList} unavailable.`;
   }
   return `${closedList} unavailable.`;
+}
+
+/** OTP `banned.routes` feed-scoped ids. Agency bans already use `1:CODE`. */
+export function otpBannedRouteGtfsIds(routeIds: string[]): string {
+  return routeIds.map((id) => `1:${id}`).join(",");
+}
+
+/**
+ * Whether an OTP itinerary boards or alights at a skipped stop (by name).
+ * OTP legs don't carry our stop ids, so name match is the practical filter.
+ */
+export function itineraryTouchesSkippedStops(
+  legs: { mode: string; from: { name: string | null }; to: { name: string | null } }[],
+  skippedStopNames: Set<string>,
+): boolean {
+  if (skippedStopNames.size === 0) return false;
+  const norm = (n: string | null) => (n ?? "").trim().toLowerCase();
+  for (const leg of legs) {
+    if (leg.mode === "WALK") continue;
+    if (skippedStopNames.has(norm(leg.from.name))) return true;
+    if (skippedStopNames.has(norm(leg.to.name))) return true;
+  }
+  return false;
+}
+
+/**
+ * Nearest vertex index on a LineString to a lat/lon, or null if farther than
+ * `toleranceM` (same snap idea as directions.legGeometry).
+ */
+export function nearestVertexIndex(
+  coords: number[][],
+  lat: number,
+  lon: number,
+  toleranceM: number,
+): number | null {
+  if (coords.length < 2) return null;
+  let bestIdx = 0;
+  let bestD = Infinity;
+  for (let i = 0; i < coords.length; i++) {
+    const d = (coords[i][0] - lon) ** 2 + (coords[i][1] - lat) ** 2;
+    if (d < bestD) {
+      bestD = d;
+      bestIdx = i;
+    }
+  }
+  const [vx, vy] = coords[bestIdx];
+  const gapM = haversineMeters(lat, lon, vy, vx);
+  return gapM <= toleranceM ? bestIdx : null;
+}
+
+function haversineMeters(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
+): number {
+  const R = 6371000;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+const SHAPE_SNAP_M = 250;
+
+/**
+ * Split a route LineString into open vs closed coordinate runs for a closed
+ * stop window. Returns null when the shape can't be trusted (caller should
+ * fall back to painting the whole route closed).
+ */
+export function splitShapeByClosureWindow(
+  coords: number[][],
+  from: { lat: number; lon: number },
+  to: { lat: number; lon: number },
+): { open: number[][][]; closed: number[][] } | null {
+  const i = nearestVertexIndex(coords, from.lat, from.lon, SHAPE_SNAP_M);
+  const j = nearestVertexIndex(coords, to.lat, to.lon, SHAPE_SNAP_M);
+  if (i === null || j === null || i === j) return null;
+
+  const start = Math.min(i, j);
+  const end = Math.max(i, j);
+  const closed = coords.slice(start, end + 1);
+  const open: GeoJSON.Position[][] = [];
+  if (start > 0) open.push(coords.slice(0, start + 1));
+  if (end < coords.length - 1) open.push(coords.slice(end));
+  if (closed.length < 2) return null;
+  return { open: open.filter((r) => r.length >= 2), closed };
 }
 
 function formatList(names: string[]): string {

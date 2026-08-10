@@ -13,6 +13,10 @@
  */
 import { decodePolyline } from "@/components/map/polyline";
 import type { JourneyLeg, TransferJourney } from "@/components/map/types";
+import {
+  itineraryTouchesSkippedStops,
+  otpBannedRouteGtfsIds,
+} from "@/lib/closures";
 import type { DirectionsAnchor } from "@/lib/directions";
 import { OPERATOR_META, type OperatorCode } from "@/lib/operators";
 
@@ -112,25 +116,48 @@ function toLineString(leg: OtpPlanLeg): GeoJSON.LineString {
   };
 }
 
+export interface TransferPlanOptions {
+  /** Operator filter (bans complement agencies). */
+  operators?: OperatorCode[];
+  /** Our DB route ids for WHOLE_ROUTE + SEVERED — formatted as `1:id` for OTP. */
+  bannedRouteIds?: string[];
+  /** Lowercased stop names inside active SKIPPED ranges (post-filter). */
+  skippedStopNames?: Set<string>;
+}
+
 /**
  * Multi-leg journeys from `origin` to `destination`, operator-ranked. When
  * `operators` is non-empty, OTP is restricted to those operators (the
  * complement is banned), so every returned journey respects the agency filter.
+ *
+ * Closures OTP can't see: pass `bannedRouteIds` (WHOLE/SEVERED) and
+ * `skippedStopNames` (drop itineraries that board/alight at skipped stops).
  */
 export async function planTransferJourneys(
   origin: DirectionsAnchor,
   destination: DirectionsAnchor,
-  operators: OperatorCode[] = [],
+  operatorsOrOptions: OperatorCode[] | TransferPlanOptions = [],
 ): Promise<TransferJourney[]> {
-  let banned: { agencies: string } | undefined;
+  const opts: TransferPlanOptions = Array.isArray(operatorsOrOptions)
+    ? { operators: operatorsOrOptions }
+    : operatorsOrOptions;
+  const operators = opts.operators ?? [];
+
+  const banned: { agencies?: string; routes?: string } = {};
   if (operators.length > 0) {
     const allowed = new Set(operators);
     const bannedCodes = ALL_CODES.filter((c) => !allowed.has(c)).map(
       (c) => `1:${c}`,
     );
     bannedCodes.push("1:AA"); // exclude unassigned routes when filtering
-    banned = { agencies: bannedCodes.join(",") };
+    banned.agencies = bannedCodes.join(",");
   }
+  if (opts.bannedRouteIds && opts.bannedRouteIds.length > 0) {
+    // Feed-scoped gtfsIds — same `1:` prefix as agency bans. Wrong format = silent no-op.
+    banned.routes = otpBannedRouteGtfsIds(opts.bannedRouteIds);
+  }
+  const bannedVar =
+    banned.agencies || banned.routes ? banned : undefined;
 
   let itineraries: OtpPlanItinerary[] = [];
   try {
@@ -143,7 +170,7 @@ export async function planTransferJourneys(
         variables: {
           from: { lat: origin.lat, lon: origin.lon },
           to: { lat: destination.lat, lon: destination.lon },
-          banned,
+          banned: bannedVar,
         },
       }),
     });
@@ -151,6 +178,12 @@ export async function planTransferJourneys(
     itineraries = (data?.data?.plan?.itineraries ?? []) as OtpPlanItinerary[];
   } catch {
     return [];
+  }
+
+  if (opts.skippedStopNames && opts.skippedStopNames.size > 0) {
+    itineraries = itineraries.filter(
+      (it) => !itineraryTouchesSkippedStops(it.legs, opts.skippedStopNames!),
+    );
   }
 
   return journeysFromItineraries(itineraries);

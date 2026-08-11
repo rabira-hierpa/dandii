@@ -21,7 +21,17 @@
       seed apply-overrides, export regen for stops.txt/routes.txt
 - [ ] Apply/Publish pipeline: regenerate zip → reseed DB → rebuild OTP graph,
       explicit batched Publish button + "live as of version N" badge (admin+)
-- [ ] 5a: route field editor (shortName/longName/color/operator)
-- [ ] 5c-rename: stop name editor — the "36 Megenagnas" fix
-- [ ] 5b: stop-sequence editor (needs TripStopOverride + stop_times regen)
-- [ ] 5c-shape: interactive shape editor (needs ShapeOverride + shapes regen)
+
+Route tabs + full CRUD (locked 2026-08-12, docs/route-editor-design.md part 2).
+Tabs: Details | Stops | Trips | Service. Costs/Coverage dropped, Shapes deferred.
+- [ ] T0: provenance (Route/Stop.origin, tombstones, Trip.directionId) + the three
+      foundation corrections — scoped deleteMany, tombstone-aware apply, CSV
+      rewriters that append operator rows. MUST land before T1.
+- [ ] T1: tab shell + Details (5a) + create/duplicate/delete route
+- [ ] T2: Stops tab — ordered list, rename (5c-rename), create/delete stop
+- [ ] T3: Trips tab (read-only) + Service tab (closure form moves here)
+- [ ] T4: stop reordering (5b — TripStopOverride + stop_times regen)
+- [ ] Shape collapse: seed keeps only the first shape_id and 444/447 routes have
+      two — rider map discards a direction. Prerequisite for the Shapes tab.
+- [ ] Restore corrupted punctuation in network-map.tsx (U+FFFD at lines 140/424/425,
+      "Couldn -t" / "Closing -" — HEAD is clean)

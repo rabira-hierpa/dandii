@@ -16,12 +16,32 @@
 - **Derived State:** Calculate values during rendering rather than storing derived data in state or sync-effects.
 - **Optimization:** Use `useMemo` for expensive computations and `useCallback` for callbacks passed down to memoized child components.
 - **URL as State:** For filters, sorting, search queries, and pagination, use Next.js `useSearchParams` and `useRouter` to treat the URL as the source of truth.
+- **Zustand owns state.** All non-trivial client state lives in a Zustand store under `@/stores`, not in component-local `useState`. A component may keep `useState` only for state that is genuinely local and disposable — an uncontrolled input's draft value, a hover flag, an open/closed toggle that nothing else reads. The moment a second component needs a value, it belongs in a store.
+  - One store per domain (`map-store.ts`, `closure-form-store.ts`), not one global store.
+  - Select narrowly (`useMapStore((s) => s.selectedRouteId)`) so a write to one slice doesn't re-render every consumer.
+  - Server data is not state: fetch it in a Server Component or Server Action. Stores hold UI intent, not caches of the database.
 
 ### 3. Imports & File Organization
 
 - **No Relative Imports:** Never use relative paths like `../../components/Button`. Always use full path alias imports relative to the root/app directory (e.g., `@/components/ui/button`, `@/lib/utils`).
 - **No Default Exports:** Always use **Named Exports** for components, utilities, and hooks (`export const MyComponent = ...`). Exception: Next.js special files (`page.tsx`, `layout.tsx`, `error.tsx`, `loading.tsx`, `route.ts`) where Next.js requires default export conventions.
 - **Type Imports:** Always explicitly mark type imports as `import type { ... } from '@/...'`.
+- **One component per file — no exceptions.** Never declare two components in the same file, however small the second one is. A "just a little helper card" is how 1,000-line files start, and it is unreachable from anywhere else. Every component gets its own folder:
+
+  ```
+  src/components/console/route-tabs/
+    route-tabs.tsx        # the component, named export
+    route-tabs.types.ts   # props + local types (only if non-trivial)
+    index.ts              # re-export
+  ```
+
+  If a file's second component exists only to keep a `useEffect` local, that is a hook, not a component — extract it to `@/hooks`.
+
+  **Exempt: `components/base/` and `components/application/`.** These are vendored Untitled UI primitives, replaced wholesale on upgrade — reshaping them guarantees a painful merge and buys nothing. Leave them as they are; the rule governs code we author (`components/console/`, `components/map/`, `components/foundations/`, `app/`).
+
+- **Types live in `@/types`, one domain per file.** Shared interfaces, DTOs, and unions are declared under `src/types/` (`transit.ts`, `console.ts`, `map.ts`, `gtfs.ts`) and imported from `@/types/...`. Only a component's own props stay beside it, in `<component>.types.ts`.
+  - Types derived from a schema are never re-declared by hand — infer them (`z.infer`, Prisma's generated types) and re-export from `@/types`.
+  - No `types.ts` barrels scattered through `components/`; that is what `@/types` replaces.
 
 ### 4. Code Quality & SonarQube Compliance
 

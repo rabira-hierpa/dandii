@@ -208,13 +208,29 @@ carries the data:
 | Stops | ✓ | `StopTime.sequence` + `StopOverride.name` |
 | Trips | ✓ | read-only; every one of 9,067 stop_times has a time |
 | Service | ✓ | our own concept — the closure form moves here from the bare panel |
-| Shapes | deferred | see "Shape collapse" below — needs per-shape storage first |
+| Shapes | ✓ | promoted 2026-08-12 — the collapse below is a live bug, so per-shape storage moves into T0 |
 | Costs | dropped | US planning metrics (deadhead, peak vehicles, USD); nothing consumes them |
 | Coverage | dropped | needs census/population data we don't have |
 
-Fields GTFS-X shows that this feed cannot fill, and which are therefore NOT built:
-`route_desc` (present as a column, empty on all 447 routes), `route_url`,
-`block_id`, and `continuous_pickup`/`continuous_drop_off` (no such columns).
+**Amended 2026-08-12.** An earlier draft dropped the fields the Addis feed leaves
+empty. That was backwards: the point of an editor is to add data the feed does
+not have. `route_desc`, `route_url`, flag-stop `continuous_pickup` /
+`continuous_drop_off`, and per-trip `block_id` all ship, empty and editable, and
+flow into the next generated feed version. Flag-stop in particular matters here —
+Addis minibuses genuinely do board anywhere along the line, so the field is
+closer to the truth than the fixed-stop default.
+
+This has a consequence for the export. `applyRouteOverridesToCsv` currently pins
+the output header to the base feed's columns:
+
+```ts
+Papa.unparse(rows, { columns: parsed.meta.fields ?? Object.keys(rows[0]) })
+```
+
+`routes.txt` has no `route_url` and no `continuous_*` columns, so an operator
+could fill those fields and the export would silently drop them. The rewriter
+must **widen the header** when an override introduces a column the base feed
+lacks, not just patch cells in existing ones.
 
 ## D2 — Operator-authored entities (full CRUD)
 
@@ -300,20 +316,116 @@ draws the outbound geometry and discards the inbound for 99% of the network, and
 the partial-closure split slices a one-direction line. This is why GTFS-X shows
 "Shapes 2".
 
-Fixing it (a real `Shape` table keyed by `shape_id`, `Route.geojson` per
-direction) is the prerequisite for the Shapes tab, but it is worth doing on its
-own merits before any editor work — it is data loss visible to riders today.
+Confirmed against the feed: the first trip of **every** one of the 447 routes has
+`direction_id = 0`, so the seed's "first shape wins" rule means the public map
+has been drawing the outbound shape for the entire network and discarding the
+inbound one.
+
+**Decision (2026-08-12): the two maps want different things, so store both and
+let each choose.**
+
+| Surface | Shows | Why |
+|---|---|---|
+| Public map (`public-map.tsx`) | inbound (`direction_id = 1`) only | riders want one legible line per route, not a doubled corridor |
+| Console map (`network-map.tsx`) | both directions | operators edit geometry per direction, as GTFS-X does |
+
+So the fix is not "pick the other shape" — it is a real `Shape` model keyed by
+`shape_id`, with `Trip.directionId` naming which is which, and per-direction
+geometry on the route. `/api/geo/routes` then serves one direction or both
+depending on the caller.
+
+Two knock-ons:
+
+- **Closure splitting works per shape.** `splitShapeByClosureWindow` currently
+  slices one collapsed line. With two shapes a partial closure has to slice
+  each direction against that direction's own stop order — which is exactly what
+  `closedWindow` already normalises for (it was built for reverse-direction
+  trips), so the logic holds; the call site becomes per-shape.
+- **This is rider-visible today**, independent of the editor, so it lands in T0
+  rather than waiting for the Shapes tab.
 
 ## Phase order
 
 | Phase | Scope | Size |
 |---|---|---|
-| T0 | provenance schema + seed/apply/export corrections above | 1 unit |
+| T0 | provenance schema + seed/apply/export corrections + `Shape` model (public=inbound, console=both) + header-widening export | 1.5 units |
 | T1 | tab shell + Details (5a) + create/duplicate/delete route | 1 unit |
 | T2 | Stops tab: ordered list, rename (5c-rename), create/delete stop | 1 unit |
-| T3 | Trips tab (read-only) + Service tab (move closure form) | 0.5 unit |
+| T3 | Trips tab (+ editable `block_id`) + Service tab (move closure form) | 0.75 unit |
+| T3b | cascade switch: affected-route count + grouped closures | 0.75 unit |
 | T4 | stop reordering (5b — `TripStopOverride` + stop_times regen) | 1.5 units |
-| — | shape-collapse fix + `Shape` table, then Shapes tab (5c-shape) | 2+ units |
+| T5 | Shapes tab — Edit/Trim/Snap on stored shapes (5c-shape) | 2+ units |
 
 T0 must land before T1: shipping create/delete against the current seed would
 lose operator work on the first reseed.
+
+---
+
+## Cascading a closure to other routes (requested 2026-08-12)
+
+Closing a stretch of road closes it for everyone, not just the route the operator
+happened to click. The closure form gets a switch: **"Also close these stops for
+other routes"**. Off by default — cascading is the higher-blast-radius action and
+should be chosen, not defaulted into.
+
+### The count is the guardrail
+
+When the switch is on, the form shows how many other routes are affected before
+anything is submitted. This is not decoration. Measured against the live feed:
+
+| | |
+|---|---|
+| Busiest stop (Torhayloch) | **26 routes** |
+| Median stop | 3 routes |
+| Stops served by 5+ routes | 707 |
+
+An operator closing two stops around Torhayloch is one click from disrupting a
+quarter of the network. They should see "26 other routes" first.
+
+**The number is a distinct count, not a sum.** A route serving three of the
+closed stops is one affected route, not three — summing per-stop counts would
+inflate the figure exactly where it matters most (busy interchanges), which is
+the worst place to overstate. Alongside the total, list the busiest few stops so
+the operator can see where the impact concentrates and reconsider the range.
+
+### Storage: a group of route closures, not a new closure type
+
+A `StopClosure` entity is the tempting model, but it would need its own planner
+path, its own map-split path, and its own rider wording — parallel to the
+`RouteClosure` logic that is already built and tested.
+
+Instead one cascade is **one group of `RouteClosure` rows**: the primary route
+plus one per affected route, sharing a `cascadeId`. This reuses `closedWindow`,
+`isPairBlocked`, `describeClosure`, the geo split, and the OTP ban list unchanged.
+
+```prisma
+model RouteClosure {
+  // …
+  /// Set when this row was created by cascading a closure across shared stops.
+  /// Rows in a group are reopened together — reopening one and leaving the
+  /// others would claim the road is open for some routes and shut for others.
+  cascadeId String?
+  @@index([cascadeId])
+}
+```
+
+Two rules the implementation has to honour:
+
+- **Each cascaded row gets its own stop range.** A shared stop sits at a
+  different sequence position on every route through it, so the range is
+  recomputed per route as the span of (closed stops ∩ that route's stops) in
+  *that route's* order. Copying the primary route's `fromStopId`/`toStopId`
+  across would be meaningless on a route that never serves them.
+- **`kind` propagates.** If the road is `SEVERED`, it is severed for every route
+  on it. A cascade cannot turn a physical blockage into a detour.
+
+Reopening acts on the group. Ending one row of a cascade individually is
+allowed (a route may be rerouted early) but must be an explicit per-route
+action, never the default.
+
+### Why this supersedes the deferred road-segment cascade
+
+`TODOS.md` carried "road-segment cascade: one physical blockage → all routes
+serving that segment" as a P2. This is that feature, arrived at from the stop
+side rather than the segment side — stops are what operators actually name, and
+they are what the closure model already keys on.

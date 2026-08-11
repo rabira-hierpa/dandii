@@ -29,9 +29,19 @@ Tabs: Details | Stops | Trips | Service. Costs/Coverage dropped, Shapes deferred
       rewriters that append operator rows. MUST land before T1.
 - [ ] T1: tab shell + Details (5a) + create/duplicate/delete route
 - [ ] T2: Stops tab — ordered list, rename (5c-rename), create/delete stop
-- [ ] T3: Trips tab (read-only) + Service tab (closure form moves here)
+- [ ] T3: Trips tab (+ editable block_id) + Service tab (closure form moves here)
+- [ ] T3b: cascade switch — affected-route count (distinct, max 26 at Torhayloch)
+      + grouped closures sharing a cascadeId, reopened together
 - [ ] T4: stop reordering (5b — TripStopOverride + stop_times regen)
-- [ ] Shape collapse: seed keeps only the first shape_id and 444/447 routes have
-      two — rider map discards a direction. Prerequisite for the Shapes tab.
-- [ ] Restore corrupted punctuation in network-map.tsx (U+FFFD at lines 140/424/425,
-      "Couldn -t" / "Closing -" — HEAD is clean)
+- [ ] T5: Shapes tab — Edit/Trim/Snap (5c-shape)
+- [x] Restore corrupted punctuation in network-map.tsx
+
+Shape collapse folded into T0: store both directions in a `Shape` model; public
+map shows inbound only, console shows both (amended 2026-08-12).
+
+Coding-standards debt from the 2026-08-12 CLAUDE.md rules (14 files ours, 24
+vendored Untitled UI files exempt):
+- [ ] One component per file: 14 of our .tsx files declare 2+ components
+      (public-map, network-map, directions-panel, library-rail, charts, …)
+- [ ] `src/types/` does not exist yet; 51 files declare exported interfaces
+- [ ] 142 useState call sites vs 2 zustand stores

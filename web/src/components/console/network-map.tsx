@@ -97,10 +97,15 @@ function startOfMinute(date: Date) {
   return next;
 }
 
+/**
+ * The console asks for both directions — operators edit each line separately,
+ * so unlike the rider map this shows the outbound and inbound shapes as
+ * distinct features (GTFS-X does the same).
+ */
 function fetchRouteGeojson() {
-  return fetch(`/api/geo/routes?t=${Date.now()}`, { cache: "no-store" }).then(
-    (res) => res.json() as Promise<GeoJSON.FeatureCollection>,
-  );
+  return fetch(`/api/geo/routes?directions=both&t=${Date.now()}`, {
+    cache: "no-store",
+  }).then((res) => res.json() as Promise<GeoJSON.FeatureCollection>);
 }
 
 export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {

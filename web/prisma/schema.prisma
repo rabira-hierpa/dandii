@@ -110,6 +110,16 @@ enum OperatorCode {
   LRT
 }
 
+/**
+ * Where an entity came from. FEED rows are reloaded from the vendored DT4A feed
+ * on every seed; OPERATOR rows were authored in the console and must survive it.
+ * The seed's deletes are scoped to FEED for exactly this reason.
+ */
+enum EntityOrigin {
+  FEED
+  OPERATOR
+}
+
 enum FareKind {
   FLAT
   TIERED
@@ -162,11 +172,15 @@ model Route {
   textColor         String?
   agencyId          String
   agency            Agency   @relation(fields: [agencyId], references: [id])
-  // Precomputed LineString geometry: full resolution for detail views,
-  // simplified for the all-routes network layer.
+  // The rider-facing geometry: full resolution for detail views, simplified for
+  // the all-routes network layer. This is ONE direction (inbound where the route
+  // has both) so the public map draws a single legible line per route rather
+  // than a doubled corridor — see Shape for the per-direction geometry the
+  // console needs.
   geojson           Json?
   geojsonSimplified Json?
   lengthMeters      Float?
+  origin            EntityOrigin @default(FEED)
 
   trips         Trip[]
   fare          Fare?
@@ -181,11 +195,12 @@ model Route {
 }
 
 model Stop {
-  id        String     @id
+  id        String       @id
   name      String
   lat       Float
   lon       Float
   stopTimes StopTime[]
+  origin    EntityOrigin @default(FEED)
 
   @@index([name])
   @@map("stop")
@@ -197,12 +212,37 @@ model Trip {
   route       Route       @relation(fields: [routeId], references: [id], onDelete: Cascade)
   serviceId   String
   shapeId     String?
+  shape       Shape?      @relation(fields: [shapeId], references: [id])
+  /// GTFS direction_id. Fully populated in the DT4A feed (447 direction-0 trips,
+  /// 444 direction-1) and previously discarded by the seed. Names which of a
+  /// route's two shapes is which, so riders can be shown one direction.
+  directionId Int?
   headsign    String?
   stopTimes   StopTime[]
   frequencies Frequency[]
 
   @@index([routeId])
+  @@index([shapeId])
   @@map("trip")
+}
+
+/**
+ * One GTFS shape (a single drawn line), keyed by the feed's shape_id.
+ *
+ * Routes almost always have two: 444 of 447 in the DT4A feed run an outbound and
+ * an inbound shape. The seed used to keep only the first and hang it on
+ * `Route.geojson`, which meant the map drew one direction and discarded the
+ * other for 99% of the network. Storing them per shape lets the public map show
+ * one direction and the console show both.
+ */
+model Shape {
+  id                String  @id
+  geojson           Json
+  geojsonSimplified Json
+  lengthMeters      Float?
+  trips             Trip[]
+
+  @@map("shape")
 }
 
 model StopTime {
@@ -334,8 +374,10 @@ model RouteAssignment {
 /// override outlives the row it annotates and is re-applied afterwards; a
 /// stopId that no longer exists in a newer feed is simply ignored on apply.
 model StopOverride {
-  stopId     String   @id
+  stopId     String    @id
   name       String?
+  /// Tombstone — see RouteOverride.deletedAt.
+  deletedAt  DateTime?
   editedById String
   editedBy   User     @relation(fields: [editedById], references: [id])
   editedAt   DateTime @updatedAt
@@ -355,6 +397,21 @@ model RouteOverride {
   color        String?
   textColor    String?
   operatorCode OperatorCode?
+  /// GTFS route_desc / route_url. Empty across the whole Addis feed today —
+  /// stored anyway because operators fill them in and they ship in the next
+  /// generated feed version.
+  desc         String?
+  url          String?
+  /// GTFS route_type, editable (base value lives on Route.type).
+  type         Int?
+  /// GTFS continuous_pickup / continuous_drop_off. Neither is a column in the
+  /// base feed, so the exporter has to widen the header to emit them. Relevant
+  /// here: Addis minibuses genuinely do board anywhere along the line.
+  continuousPickup  Int?
+  continuousDropOff Int?
+  /// Tombstone. Deleting a FEED row outright is a lie — the next reseed brings
+  /// it back — so deletion is recorded here and applied after the reload.
+  deletedAt    DateTime?
   editedById   String
   editedBy     User          @relation(fields: [editedById], references: [id])
   editedAt     DateTime      @updatedAt

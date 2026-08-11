@@ -50,6 +50,8 @@ export interface GtfsTrip extends Record<string, string> {
   route_id: string;
   service_id: string;
   shape_id: string;
+  /** GTFS direction_id, "0" | "1". Populated throughout the DT4A feed. */
+  direction_id: string;
   trip_headsign: string;
 }
 

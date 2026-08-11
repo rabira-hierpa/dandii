@@ -1,9 +1,15 @@
+import type { NextRequest } from "next/server";
 import {
   closedWindow,
   splitShapeByClosureWindow,
   type ClosureRange,
 } from "@/lib/closures";
 import { prisma } from "@/lib/prisma";
+import {
+  buildDirectionalFeatures,
+  loadClosureAnchors,
+  loadDirectionalShapes,
+} from "@/lib/route-shape-features";
 import { getActiveClosures } from "@/lib/transit";
 
 type RouteRow = {
@@ -21,10 +27,16 @@ type RouteRow = {
  * Partially closed routes emit open + closed segment features (same routeId,
  * unique feature `id`) so existing open/closed map layers keep working.
  *
+ * `?directions=both` returns every direction as its own feature (console map).
+ * The default returns one line per route — the seed points Route.geojson at the
+ * inbound shape, so riders get a legible network rather than a doubled corridor.
+ *
  * Cache: short TTL while any closure is active so emergency updates show up;
  * longer when the network is fully open.
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const bothDirections =
+    request.nextUrl.searchParams.get("directions") === "both";
   const [routes, active] = await Promise.all([
     prisma.route.findMany({
       select: {
@@ -45,6 +57,29 @@ export async function GET() {
     const list = byRoute.get(c.routeId) ?? [];
     list.push(c);
     byRoute.set(c.routeId, list);
+  }
+
+  if (bothDirections) {
+    const [shapes, anchors] = await Promise.all([
+      loadDirectionalShapes(),
+      loadClosureAnchors(active),
+    ]);
+    return jsonWithCache(
+      buildDirectionalFeatures(
+        shapes,
+        (routes as RouteRow[]).map((r) => ({
+          id: r.id,
+          shortName: r.shortName,
+          longName: r.longName,
+          type: r.type,
+          lengthMeters: r.lengthMeters,
+          operatorCode: r.assignment?.operator.code ?? null,
+        })),
+        byRoute,
+        anchors,
+      ),
+      active.length > 0,
+    );
   }
 
   const features: GeoJSON.Feature[] = [];
@@ -103,14 +138,20 @@ export async function GET() {
     });
   }
 
-  const cacheControl =
-    active.length > 0
-      ? "public, s-maxage=60, stale-while-revalidate=30"
-      : "public, s-maxage=3600, stale-while-revalidate=600";
+  return jsonWithCache(features, active.length > 0);
+}
 
+/** Short TTL while anything is closed so emergency updates reach riders fast. */
+function jsonWithCache(features: GeoJSON.Feature[], anyClosure: boolean) {
   return Response.json(
     { type: "FeatureCollection", features },
-    { headers: { "Cache-Control": cacheControl } },
+    {
+      headers: {
+        "Cache-Control": anyClosure
+          ? "public, s-maxage=60, stale-while-revalidate=30"
+          : "public, s-maxage=3600, stale-while-revalidate=600",
+      },
+    },
   );
 }
 

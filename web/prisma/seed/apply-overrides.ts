@@ -20,6 +20,9 @@ export interface OverrideApplyResult {
   stopsRenamed: number;
   routesEdited: number;
   operatorsReassigned: number;
+  stopsDeleted: number;
+  routesDeleted: number;
+  stopTimesRemoved: number;
   skipped: number;
 }
 
@@ -30,6 +33,9 @@ export async function applyOverrides(
     stopsRenamed: 0,
     routesEdited: 0,
     operatorsReassigned: 0,
+    stopsDeleted: 0,
+    routesDeleted: 0,
+    stopTimesRemoved: 0,
     skipped: 0,
   };
 
@@ -42,8 +48,29 @@ async function applyStopOverrides(
   prisma: PrismaClient,
   result: OverrideApplyResult,
 ): Promise<number> {
+  // Tombstones first: the feed has just put these rows back, and honouring the
+  // deletion means removing them again. The stop_times go with them (the FK
+  // cascades), which is the point — the operator said the stop isn't real, so
+  // no trip should call at it. The guard against tombstoning a stop other
+  // routes still depend on lives in the server action, before the row is ever
+  // written; by the time we get here the decision has been made.
+  const tombstoned = await prisma.stopOverride.findMany({
+    where: { deletedAt: { not: null } },
+    select: { stopId: true },
+  });
+  if (tombstoned.length > 0) {
+    const ids = tombstoned.map((t) => t.stopId);
+    result.stopTimesRemoved += await prisma.stopTime
+      .count({ where: { stopId: { in: ids } } })
+      .catch(() => 0);
+    const removed = await prisma.stop.deleteMany({
+      where: { id: { in: ids }, origin: "FEED" },
+    });
+    result.stopsDeleted += removed.count;
+  }
+
   const overrides = await prisma.stopOverride.findMany({
-    where: { name: { not: null } },
+    where: { name: { not: null }, deletedAt: null },
     select: { stopId: true, name: true },
   });
   if (overrides.length === 0) return 0;
@@ -76,7 +103,21 @@ async function applyRouteOverrides(
   prisma: PrismaClient,
   result: OverrideApplyResult,
 ): Promise<number> {
-  const overrides = await prisma.routeOverride.findMany();
+  const tombstoned = await prisma.routeOverride.findMany({
+    where: { deletedAt: { not: null } },
+    select: { routeId: true },
+  });
+  if (tombstoned.length > 0) {
+    // Cascades this route's own trips/stop_times only — contained, unlike a stop.
+    const removed = await prisma.route.deleteMany({
+      where: { id: { in: tombstoned.map((t) => t.routeId) }, origin: "FEED" },
+    });
+    result.routesDeleted += removed.count;
+  }
+
+  const overrides = await prisma.routeOverride.findMany({
+    where: { deletedAt: null },
+  });
   if (overrides.length === 0) return 0;
 
   const live = new Set(
@@ -100,12 +141,15 @@ async function applyRouteOverrides(
       continue;
     }
 
-    const data = pickEdited({
+    const data: Record<string, string | number> = pickEdited({
       shortName: o.shortName,
       longName: o.longName,
       color: o.color,
       textColor: o.textColor,
     });
+    // `desc`, `url` and the continuous_* flags have no Route column — they are
+    // export-only fields, folded into routes.txt by lib/gtfs-overrides.ts.
+    if (o.type !== null) data.type = o.type;
     if (Object.keys(data).length > 0) {
       await prisma.route.update({ where: { id: o.routeId }, data });
       result.routesEdited++;

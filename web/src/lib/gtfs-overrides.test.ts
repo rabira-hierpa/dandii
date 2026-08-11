@@ -5,9 +5,10 @@ import {
 } from "./gtfs-overrides";
 
 /** Shaped like the vendored DT4A feed, including a comma inside a long name. */
-const ROUTES_CSV = `route_id,agency_id,route_short_name,route_long_name,route_type,route_color,route_text_color
-10400029,AA,AB097,"Megenegna Terminal ↔ Legedadi Mission",3,D97706,FFFFFF
-10406491,AA,AB083,"Ayat Chefe Condominium, Phase 2 ↔ 6 Kilo",3,D97706,FFFFFF
+/** Column order and set mirror data/gtfs-2026/combined/routes.txt exactly. */
+const ROUTES_CSV = `route_id,route_short_name,route_type,route_long_name,agency_id,route_desc,route_color,route_text_color
+10400029,AB097,3,"Megenegna Terminal ↔ Legedadi Mission",AA,,D97706,FFFFFF
+10406491,AB083,3,"Ayat Chefe Condominium, Phase 2 ↔ 6 Kilo",AA,,D97706,FFFFFF
 `;
 
 const STOPS_CSV = `stop_id,stop_name,stop_lat,stop_lon
@@ -61,6 +62,11 @@ describe("applyRouteOverridesToCsv", () => {
     longName: null,
     color: null,
     textColor: null,
+    desc: null,
+    url: null,
+    type: null,
+    continuousPickup: null,
+    continuousDropOff: null,
   };
 
   it("replaces only the edited fields and leaves nulls at the base value", () => {
@@ -98,5 +104,138 @@ describe("applyRouteOverridesToCsv", () => {
         { ...base, routeId: "10400029", shortName: "X" },
       ]),
     ).toBe(notRoutes);
+  });
+});
+
+/**
+ * The DT4A feed has no route_url or continuous_* columns, so emitting an
+ * operator's value there means widening the header — pinning it to the base
+ * feed's columns drops the edit with no error.
+ */
+describe("header widening for fields the base feed has no column for", () => {
+  const base = {
+    shortName: null,
+    longName: null,
+    color: null,
+    textColor: null,
+    desc: null,
+    url: null,
+    type: null,
+    continuousPickup: null,
+    continuousDropOff: null,
+  };
+  const header = (csv: string) => csv.split("\n")[0].split(",");
+
+  it("adds route_url and carries the value", () => {
+    const out = applyRouteOverridesToCsv(ROUTES_CSV, [
+      { ...base, routeId: "10400029", url: "https://dandii.app/r/AB097" },
+    ]);
+    expect(header(out)).toContain("route_url");
+    expect(out).toContain("https://dandii.app/r/AB097");
+  });
+
+  it("adds the flag-stop columns when set", () => {
+    const out = applyRouteOverridesToCsv(ROUTES_CSV, [
+      { ...base, routeId: "10400029", continuousPickup: 0, continuousDropOff: 0 },
+    ]);
+    expect(header(out)).toContain("continuous_pickup");
+    expect(header(out)).toContain("continuous_drop_off");
+  });
+
+  it("does not sprout empty columns when nothing set them", () => {
+    const out = applyRouteOverridesToCsv(ROUTES_CSV, [
+      { ...base, routeId: "10400029", shortName: "AB97" },
+    ]);
+    expect(header(out)).toEqual(header(ROUTES_CSV));
+  });
+
+  it("keeps base columns first, in their original order", () => {
+    const out = applyRouteOverridesToCsv(ROUTES_CSV, [
+      { ...base, routeId: "10400029", url: "https://x" },
+    ]);
+    const baseCols = header(ROUTES_CSV);
+    expect(header(out).slice(0, baseCols.length)).toEqual(baseCols);
+  });
+
+  it("writes route_desc into the column the feed already has", () => {
+    const out = applyRouteOverridesToCsv(ROUTES_CSV, [
+      { ...base, routeId: "10400029", desc: "Express via Megenagna" },
+    ]);
+    expect(header(out)).toEqual(header(ROUTES_CSV)); // route_desc already exists
+    expect(out).toContain("Express via Megenagna");
+  });
+});
+
+describe("operator-created entities are appended", () => {
+  const dataRows = (csv: string) =>
+    csv.trim().split("\n").slice(1).filter(Boolean);
+
+  it("appends a created stop with its coordinates", () => {
+    const out = applyStopOverridesToCsv(
+      STOPS_CSV,
+      [],
+      [{ id: "op:abc123", name: "New Taxi Terminal", lat: 9.01, lon: 38.76 }],
+    );
+    expect(dataRows(out)).toHaveLength(3);
+    expect(out).toContain("op:abc123");
+    expect(out).toContain("New Taxi Terminal");
+    expect(out).toContain("38.76");
+  });
+
+  it("appends a created route with every base column filled", () => {
+    const out = applyRouteOverridesToCsv(
+      ROUTES_CSV,
+      [],
+      [
+        {
+          id: "op:route1",
+          shortName: "TX999",
+          longName: "Test ↔ Route",
+          type: 3,
+          agencyId: "AA",
+          color: null,
+          textColor: null,
+          desc: null,
+          url: null,
+        },
+      ],
+    );
+    const rows = dataRows(out);
+    expect(rows).toHaveLength(3);
+    // Ragged rows break GTFS parsers — the appended row must match the header.
+    const cols = out.split("\n")[0].split(",").length;
+    const appended = rows[rows.length - 1];
+    expect(appended.split(",")).toHaveLength(cols);
+  });
+});
+
+describe("tombstoned entities are omitted", () => {
+  const dataRows = (csv: string) =>
+    csv.trim().split("\n").slice(1).filter(Boolean);
+
+  it("drops a deleted stop from stops.txt", () => {
+    const out = applyStopOverridesToCsv(STOPS_CSV, [], [], [
+      "node/10823916391",
+    ]);
+    expect(dataRows(out)).toHaveLength(1);
+    expect(out).not.toContain("node/10823916391");
+    expect(out).toContain("Legedadi Mission");
+  });
+
+  it("drops a deleted route from routes.txt", () => {
+    const out = applyRouteOverridesToCsv(ROUTES_CSV, [], [], ["10400029"]);
+    expect(dataRows(out)).toHaveLength(1);
+    expect(out).not.toContain("AB097");
+  });
+
+  it("a rename on a deleted row does not resurrect it", () => {
+    const out = applyStopOverridesToCsv(
+      STOPS_CSV,
+      [{ stopId: "node/10823916391", name: "Should Not Appear" }],
+      [],
+      ["node/10823916391"],
+    );
+    expect(out).not.toContain("Should Not Appear");
+    expect(dataRows(out)).toHaveLength(1);
   });
 });

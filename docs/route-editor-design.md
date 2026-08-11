@@ -188,3 +188,132 @@ the cost; shape editing is a genuine mini-CAD tool and should not block them.
 
 Foundation + Apply/Publish are the prerequisite for everything; 5a + 5c-rename are
 the first shippable operator-visible value on top of them.
+
+---
+
+# Batch D part 2 — Route tabs + operator-authored entities
+
+Locked 2026-08-12. Supersedes §6's "Edit button" sketch: the console's left panel
+gets a tab bar per selected route, modelled on GTFS-X (screenshots in the
+2026-08-12 session). Two decisions were taken at the gate.
+
+## D1 — Tab set: Details, Stops, Trips, Service
+
+GTFS-X shows six tabs. We ship four, chosen by whether the Addis feed actually
+carries the data:
+
+| Tab | Ships | Why |
+|---|---|---|
+| Details | ✓ | names/color/operator are `RouteOverride` (foundation done) |
+| Stops | ✓ | `StopTime.sequence` + `StopOverride.name` |
+| Trips | ✓ | read-only; every one of 9,067 stop_times has a time |
+| Service | ✓ | our own concept — the closure form moves here from the bare panel |
+| Shapes | deferred | see "Shape collapse" below — needs per-shape storage first |
+| Costs | dropped | US planning metrics (deadhead, peak vehicles, USD); nothing consumes them |
+| Coverage | dropped | needs census/population data we don't have |
+
+Fields GTFS-X shows that this feed cannot fill, and which are therefore NOT built:
+`route_desc` (present as a column, empty on all 447 routes), `route_url`,
+`block_id`, and `continuous_pickup`/`continuous_drop_off` (no such columns).
+
+## D2 — Operator-authored entities (full CRUD)
+
+The gate chose full CRUD: create, duplicate and delete, not just field overrides.
+That breaks the foundation's core assumption — "every override falls back to a
+base-feed value" — because a created stop has no base row to fall back to, and a
+deleted feed row comes straight back on the next reseed. So the model grows a
+provenance axis.
+
+### Provenance
+
+```prisma
+enum EntityOrigin { FEED | OPERATOR }
+// on Route and Stop, @default(FEED)
+```
+
+Three states, each with one storage rule:
+
+| State | Where the truth lives | Reseed behaviour |
+|---|---|---|
+| Feed row, unedited | `route` / `stop` | reloaded from the feed |
+| Feed row, edited | base row + `*Override` field | reloaded, then override replayed |
+| Operator-created | base row with `origin = OPERATOR` | **not deleted, not reloaded** |
+| Feed row, deleted | base row + override with `deletedAt` | reloaded, then removed by apply |
+
+An operator-created entity needs no override row: the base row *is* the truth.
+Only feed rows carry overrides. This keeps one writer per fact.
+
+### Deletion is a tombstone, never a DELETE
+
+Deleting a feed route with `DELETE FROM route` is a lie — the next reseed
+resurrects it. Deletion sets `deletedAt` on the override row; the seed's apply
+step removes the reloaded row afterwards. Deleting an *operator-created* entity
+is a real delete, since nothing will bring it back.
+
+Deleting a stop that other routes still serve must be refused, not cascaded —
+cascading would silently shorten unrelated routes.
+
+### Id namespacing
+
+Feed ids are `node/…` / `way/…` for stops and numeric for routes. Operator
+entities get an `op:` prefix (`op:<cuid>`), which cannot collide with either,
+so a future DT4A revision can never overwrite operator work by id reuse.
+
+### Consequences for what shipped on 2026-08-10
+
+Full CRUD invalidates three assumptions in the foundation commit. These are
+corrections to existing code, not new files:
+
+1. `prisma/seed/index.ts` — `stop.deleteMany()` and `route.deleteMany()` must be
+   scoped to `where: { origin: 'FEED' }`, or every reseed wipes operator-created
+   entities.
+2. `prisma/seed/apply-overrides.ts` — currently patches fields only. It must also
+   drop tombstoned feed rows.
+3. `src/lib/gtfs-overrides.ts` — `applyStopOverridesToCsv` /
+   `applyRouteOverridesToCsv` patch rows by id and ignore unknown ids by design.
+   They must additionally **append** `origin = OPERATOR` rows and **omit**
+   tombstoned ones, or operator work never reaches the exported feed or OTP.
+
+## Schema deltas
+
+| Change | Unblocks |
+|---|---|
+| `Route.origin`, `Stop.origin` (`EntityOrigin`, default FEED) | create/delete |
+| `RouteOverride.deletedAt`, `StopOverride.deletedAt` | delete feed rows |
+| `Trip.directionId Int?` | direction labels (Details), direction selector (Stops), direction column (Trips) |
+| `RouteOverride.type Int?` | editable route type |
+
+`direction_id` is already in `trips.txt` and fully populated (447 direction-0
+trips, 444 direction-1) — the seed simply never read it. One column plus a
+reseed turns three tabs from partial to complete.
+
+## Shape collapse — a live bug, not an editor gap
+
+`prisma/seed/index.ts:118` keeps only the first `shape_id` per route:
+
+```ts
+if (trip.shape_id && !routeShapeId.has(trip.route_id)) { … }
+```
+
+**444 of 447 routes have two shapes**, one per direction. The rider map therefore
+draws the outbound geometry and discards the inbound for 99% of the network, and
+the partial-closure split slices a one-direction line. This is why GTFS-X shows
+"Shapes 2".
+
+Fixing it (a real `Shape` table keyed by `shape_id`, `Route.geojson` per
+direction) is the prerequisite for the Shapes tab, but it is worth doing on its
+own merits before any editor work — it is data loss visible to riders today.
+
+## Phase order
+
+| Phase | Scope | Size |
+|---|---|---|
+| T0 | provenance schema + seed/apply/export corrections above | 1 unit |
+| T1 | tab shell + Details (5a) + create/duplicate/delete route | 1 unit |
+| T2 | Stops tab: ordered list, rename (5c-rename), create/delete stop | 1 unit |
+| T3 | Trips tab (read-only) + Service tab (move closure form) | 0.5 unit |
+| T4 | stop reordering (5b — `TripStopOverride` + stop_times regen) | 1.5 units |
+| — | shape-collapse fix + `Shape` table, then Shapes tab (5c-shape) | 2+ units |
+
+T0 must land before T1: shipping create/delete against the current seed would
+lose operator work on the first reseed.

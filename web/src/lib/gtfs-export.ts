@@ -213,6 +213,23 @@ async function readBaseRouteIds(baseDir: string): Promise<Set<string>> {
   return ids;
 }
 
+/**
+ * route_ids the exported routes.txt will actually contain.
+ *
+ * A fare_rules row naming a route that routes.txt lacks is a GTFS
+ * foreign_key_violation, and the exported file is no longer just the base feed:
+ * operator-created routes are appended to it and tombstoned ones are dropped.
+ */
+async function readExportedRouteIds(
+  baseDir: string,
+  overrides: FeedOverrides,
+): Promise<Set<string>> {
+  const ids = await readBaseRouteIds(baseDir);
+  for (const r of overrides.createdRoutes) ids.add(r.id);
+  for (const id of overrides.deletedRouteIds) ids.delete(id);
+  return ids;
+}
+
 /** Prune zip FILES beyond the newest KEEP_ZIPS (DB rows are kept for audit). */
 async function pruneOldZips(): Promise<void> {
   const stale = await prisma.feedVersion.findMany({
@@ -255,15 +272,7 @@ export async function generateFeedVersion(
     })),
   );
   const overrides = await loadFeedOverrides();
-
-  // A fare_rules row must name a route that routes.txt actually contains, or
-  // the feed fails GTFS validation with a foreign_key_violation. The exported
-  // routes.txt is no longer just the base feed: operator-created routes are
-  // appended to it, and tombstoned ones are dropped from it. Filter against
-  // what will really be in the file, not against what the vendored feed had.
-  const exportedRouteIds = await readBaseRouteIds(baseDir);
-  for (const r of overrides.createdRoutes) exportedRouteIds.add(r.id);
-  for (const id of overrides.deletedRouteIds) exportedRouteIds.delete(id);
+  const exportedRouteIds = await readExportedRouteIds(baseDir, overrides);
   const fares: FlatFare[] = allFlat.filter((f) =>
     exportedRouteIds.has(f.routeId),
   );

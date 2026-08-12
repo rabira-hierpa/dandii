@@ -18,6 +18,12 @@ import MapGl, {
 import type { FilterSpecification } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { createClosure, endClosure } from "@/actions/closures";
+import { RouteDetailsTab } from "@/components/console/route-details-tab";
+import { RouteStopsTab } from "@/components/console/route-stops-tab";
+import { RouteTabs } from "@/components/console/route-tabs";
+import { RouteTripsTab } from "@/components/console/route-trips-tab";
+import { useRouteEditorStore } from "@/stores/route-editor-store";
+import type { RouteEditorDetail } from "@/types/console";
 import { DateTimePicker } from "@/components/application/date-picker/date-time-picker";
 import { RouteChip } from "@/components/console/route-chip";
 import { describeClosure, type ClosureKind } from "@/lib/closures";
@@ -152,6 +158,19 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
   const [routeStops, setRouteStops] = useState<RouteStop[]>([]);
   const [stopsLoading, setStopsLoading] = useState(false);
 
+  const activeTab = useRouteEditorStore((s) => s.activeTab);
+  const editorDetail = useRouteEditorStore((s) => s.detail);
+  const editorLoading = useRouteEditorStore((s) => s.detailLoading);
+  const editorFeedback = useRouteEditorStore((s) => s.feedback);
+  const setEditorDetail = useRouteEditorStore((s) => s.setDetail);
+  const setEditorLoading = useRouteEditorStore((s) => s.setDetailLoading);
+  const resetEditor = useRouteEditorStore((s) => s.resetForRoute);
+  const [detailReloadKey, setDetailReloadKey] = useState(0);
+  const reloadEditorDetail = useCallback(
+    () => setDetailReloadKey((k) => k + 1),
+    [],
+  );
+
   const loadGeojson = useCallback(async () => {
     setGeojson(await fetchRouteGeojson());
   }, []);
@@ -206,6 +225,38 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
       cancelled = true;
     };
   }, [selectedRouteId, selected?.closure]);
+
+  // Editor payload for the selected route (tabs read this).
+  useEffect(() => {
+    if (!selectedRouteId) {
+      resetEditor();
+      return;
+    }
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (!cancelled) setEditorLoading(true);
+    });
+    void fetch(`/api/console/routes/${selectedRouteId}`, { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: RouteEditorDetail | null) => {
+        if (!cancelled) setEditorDetail(data);
+      })
+      .catch(() => {
+        if (!cancelled) setEditorDetail(null);
+      })
+      .finally(() => {
+        if (!cancelled) setEditorLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    selectedRouteId,
+    detailReloadKey,
+    resetEditor,
+    setEditorDetail,
+    setEditorLoading,
+  ]);
 
   const previewSentence = useMemo(() => {
     if (
@@ -504,7 +555,58 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
               </span>
             </div>
 
-            {selected.closure ? (
+            <RouteTabs
+              stopCount={
+                editorDetail
+                  ? (editorDetail.stopsByDirection[0]?.length ?? null)
+                  : null
+              }
+              tripCount={
+                editorDetail
+                  ? editorDetail.directions.reduce(
+                      (n, d) => n + d.tripCount,
+                      0,
+                    )
+                  : null
+              }
+            />
+
+            {editorFeedback && (
+              <div
+                className={cx(
+                  "rounded-lg px-3 py-2 text-[12.5px]",
+                  editorFeedback.kind === "error"
+                    ? "bg-[#FEF2F2] text-[#B91C1C]"
+                    : "bg-[#DCFCE7] text-[#15803D]",
+                )}
+              >
+                {editorFeedback.message}
+              </div>
+            )}
+
+            {activeTab !== "service" && editorLoading && (
+              <div className="py-3 text-[12.5px] text-[#5C6B5E]">Loading…</div>
+            )}
+
+            {activeTab === "details" && editorDetail && (
+              <RouteDetailsTab
+                detail={editorDetail}
+                onChanged={reloadEditorDetail}
+              />
+            )}
+
+            {activeTab === "stops" && editorDetail && (
+              <RouteStopsTab
+                detail={editorDetail}
+                onChanged={reloadEditorDetail}
+              />
+            )}
+
+            {activeTab === "trips" && editorDetail && (
+              <RouteTripsTab detail={editorDetail} />
+            )}
+
+            {activeTab === "service" && (selected.closure ? (
               <>
                 <div
                   className="rounded-lg px-3 py-2 text-[12.5px]"
@@ -731,7 +833,7 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
                       : "Close route"}
                 </button>
               </div>
-            )}
+            ))}
           </div>
         ) : (
           <div className="rounded-xl border border-[#E2E6DE] bg-white p-4 text-[13px] text-[#5C6B5E]">

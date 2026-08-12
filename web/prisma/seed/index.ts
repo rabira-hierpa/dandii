@@ -120,21 +120,19 @@ async function main() {
   /**
    * Pick the shape the PUBLIC map draws for each route.
    *
-   * This used to be "whichever shape the first trip happened to reference",
-   * and since the first trip of all 447 routes is direction_id 0, the rider map
-   * drew the outbound line and discarded the inbound one for the 444 routes
-   * that have both. Prefer direction 1 (inbound) now, falling back to whatever
-   * the route does have — the three single-shape routes, and any trip whose
-   * direction_id is missing.
+   * Routes carry two shapes (444 of 447 do) and the rider map draws one line,
+   * so one has to win. Outbound (direction_id 0) is that line — every route in
+   * the feed has one, whereas 3 routes have no inbound shape at all.
    *
    * Both shapes are still stored (see the Shape import below); this only
-   * decides which one hangs off Route.geojson for riders.
+   * decides which one hangs off Route.geojson for riders. The console reads
+   * them per direction via /api/geo/routes?directions=both.
    */
   const routeShapeId = new Map<string, string>();
   const routeFallbackShapeId = new Map<string, string>();
   for (const trip of trips) {
     if (!trip.shape_id) continue;
-    if (trip.direction_id === "1") {
+    if (trip.direction_id === "0") {
       if (!routeShapeId.has(trip.route_id)) {
         routeShapeId.set(trip.route_id, trip.shape_id);
       }

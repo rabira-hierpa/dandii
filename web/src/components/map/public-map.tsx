@@ -132,8 +132,9 @@ function StopCard({
         {stop.lat.toFixed(5)}, {stop.lon.toFixed(5)}
       </div>
       <button
-        onClick={() => onDirections(stop)}
         className="mt-3 w-full cursor-pointer rounded-full bg-[#1A73E8] py-2 text-[13px] font-semibold text-white hover:bg-[#1765CC]"
+        onClick={() => onDirections(stop)}
+        type="button"
       >
         {t("directionsToHere")}
       </button>
@@ -983,7 +984,10 @@ export function PublicMap({ user, account }: PublicMapProps) {
                   onClick={clearSelection}
                   className="flex cursor-pointer items-center gap-1.5 self-start rounded-full px-2 py-1 text-[13px] font-semibold text-[#1A73E8] hover:bg-[#F1F3F4]"
                 >
-                  ← {detailSource === "search" ? tMap("backToResults") : tc("close")}
+                  ←{" "}
+                  {detailSource === "search"
+                    ? tMap("backToResults")
+                    : tc("close")}
                 </button>
                 {selectedStop && !detail && (
                   <StopCard

@@ -173,10 +173,9 @@ model Route {
   agencyId          String
   agency            Agency   @relation(fields: [agencyId], references: [id])
   // The rider-facing geometry: full resolution for detail views, simplified for
-  // the all-routes network layer. This is ONE direction (inbound where the route
-  // has both) so the public map draws a single legible line per route rather
-  // than a doubled corridor — see Shape for the per-direction geometry the
-  // console needs.
+  // the all-routes network layer. This is ONE direction (outbound) so the public
+  // map draws a single legible line per route rather than a doubled corridor —
+  // see Shape for the per-direction geometry the console needs.
   geojson           Json?
   geojsonSimplified Json?
   lengthMeters      Float?

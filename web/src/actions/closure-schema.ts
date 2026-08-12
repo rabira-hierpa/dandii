@@ -3,6 +3,9 @@ import { CLOSURE_REASONS } from "@/lib/operators";
 
 const closureKinds = ["WHOLE_ROUTE", "SEVERED", "SKIPPED"] as const;
 
+/** One-minute grace so "now" from a slightly-lagged client still validates. */
+const PAST_GRACE_MS = 60_000;
+
 export const closureSchema = z
   .object({
     routeId: z.string().min(1),
@@ -16,6 +19,14 @@ export const closureSchema = z
   })
   .refine((data) => data.endsAt > data.startsAt, {
     message: "End must be after start",
+    path: ["endsAt"],
+  })
+  .refine((data) => data.startsAt.getTime() >= Date.now() - PAST_GRACE_MS, {
+    message: "Start cannot be in the past",
+    path: ["startsAt"],
+  })
+  .refine((data) => data.endsAt.getTime() >= Date.now() - PAST_GRACE_MS, {
+    message: "End cannot be in the past",
     path: ["endsAt"],
   })
   .superRefine((data, ctx) => {

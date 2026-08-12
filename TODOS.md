@@ -6,6 +6,16 @@
 - [ ] Unit/integration tests for fare-proposal action guards (dedup, rate limit, double-decision)
 - [ ] Playwright authenticated wedge: submit → approve → fare on sheet → export
 
+## P1 — Planner ignores direction on partial closures (found 2026-08-12)
+
+`isPairClosed` matches closures by stop id, but 406 of the 444 two-direction
+routes share NO stop ids between their directions. So closing a stretch almost
+certainly blocks only the direction whose stop ids the operator picked and
+leaves the return journey planning as if the road were open. Unverified at
+runtime — the map path was fixed in T0 by falling back to geometry, and the
+planner needs the same treatment (or a stop-cluster concept, which would also
+fix search grouping and the T3b cascade).
+
 ## P2 — Deferred from partial-closures autoplan (2026-08-07)
 
 - [ ] Road-segment cascade: one physical blockage → all routes serving that segment
@@ -27,9 +37,13 @@ Tabs: Details | Stops | Trips | Service. Costs/Coverage dropped, Shapes deferred
 - [ ] T0: provenance (Route/Stop.origin, tombstones, Trip.directionId) + the three
       foundation corrections — scoped deleteMany, tombstone-aware apply, CSV
       rewriters that append operator rows. MUST land before T1.
-- [ ] T1: tab shell + Details (5a) + create/duplicate/delete route
-- [ ] T2: Stops tab — ordered list, rename (5c-rename), create/delete stop
-- [ ] T3: Trips tab (+ editable block_id) + Service tab (closure form moves here)
+- [x] T1: tab shell + Details (5a) + create/duplicate/delete route
+- [x] T2: Stops tab — ordered list, rename (5c-rename), create/delete stop
+- [ ] T3: Trips tab (+ editable block_id, needs TripOverride) + Service tab.
+      Moving the closure form out of network-map.tsx is the first task — it is
+      why that file's cognitive complexity is 51 against a limit of 15.
+- [ ] Route "+ Add route" entry point: createRoute action exists and is tested
+      by duplicate, but nothing in the UI calls it yet
 - [ ] T3b: cascade switch — affected-route count (distinct, max 26 at Torhayloch)
       + grouped closures sharing a cascadeId, reopened together
 - [ ] T4: stop reordering (5b — TripStopOverride + stop_times regen)
@@ -43,5 +57,6 @@ Coding-standards debt from the 2026-08-12 CLAUDE.md rules (14 files ours, 24
 vendored Untitled UI files exempt):
 - [ ] One component per file: 14 of our .tsx files declare 2+ components
       (public-map, network-map, directions-panel, library-rail, charts, …)
-- [ ] `src/types/` does not exist yet; 51 files declare exported interfaces
+- [ ] `src/types/` now exists (gtfs.ts, console.ts); older `types.ts` barrels
+      and inline interfaces still to migrate
 - [ ] 142 useState call sites vs 2 zustand stores

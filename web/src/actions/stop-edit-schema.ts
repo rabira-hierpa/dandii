@@ -34,3 +34,12 @@ export type StopRenameInput = z.input<typeof stopRenameSchema>;
 export type StopCreateInput = z.input<typeof stopCreateSchema>;
 
 export { ADDIS_BOUNDS };
+
+export const stopReorderSchema = z.object({
+  routeId: z.string().min(1),
+  directionId: z.number().int().min(0).max(1),
+  /** The full new order, first call to last. Bounded so a client can't blow up the write. */
+  stopIds: z.array(z.string().min(1)).min(2).max(500),
+});
+
+export type StopReorderInput = z.input<typeof stopReorderSchema>;

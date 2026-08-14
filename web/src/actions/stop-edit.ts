@@ -8,8 +8,10 @@ import {
   stopCreateSchema,
   stopIdSchema,
   stopRenameSchema,
+  stopReorderSchema,
   type StopCreateInput,
   type StopRenameInput,
+  type StopReorderInput,
 } from "./stop-edit-schema";
 
 function revalidateConsole() {
@@ -228,6 +230,97 @@ export async function deleteStop(input: { stopId: string }) {
     });
     await prisma.stop.delete({ where: { id: stop.id } });
   }
+
+  revalidateConsole();
+  return { ok: true as const };
+}
+
+/**
+ * Reorder a direction's stops.
+ *
+ * Two things worth knowing about how this is applied.
+ *
+ * **Times stay with the position, not the stop.** A run reaches its fifth call
+ * at 06:20 whichever stop that is. Carrying each stop's old time along with it
+ * would produce a timetable that goes backwards in the middle, which is invalid
+ * GTFS and would break every arrival estimate downstream.
+ *
+ * **Rows are cleared before being rewritten.** stop_time's primary key is
+ * (tripId, sequence), so updating positions in place collides the moment two
+ * stops swap. Deleting the direction's rows and re-inserting in the new order
+ * sidesteps the whole class of ordering bugs, inside a transaction so a failure
+ * can't leave a trip half-sequenced.
+ */
+export async function reorderRouteStops(input: StopReorderInput) {
+  const session = await requirePermission({ feedEdit: ["shape"] });
+
+  let data;
+  try {
+    data = stopReorderSchema.parse(input);
+  } catch (err) {
+    return zodError(err, "Invalid stop order");
+  }
+
+  if (new Set(data.stopIds).size !== data.stopIds.length) {
+    return { ok: false as const, error: "The same stop appears twice" };
+  }
+
+  const trips = await prisma.trip.findMany({
+    where: { routeId: data.routeId, directionId: data.directionId },
+    select: {
+      id: true,
+      stopTimes: {
+        orderBy: { sequence: "asc" },
+        select: { stopId: true, arrival: true, departure: true },
+      },
+    },
+  });
+  if (trips.length === 0) {
+    return { ok: false as const, error: "This direction has no trips" };
+  }
+
+  // Reject an order that isn't a permutation of what the trip actually serves —
+  // a stale client would otherwise silently drop or invent calls.
+  const expected = new Set(trips[0].stopTimes.map((st) => st.stopId));
+  if (
+    expected.size !== data.stopIds.length ||
+    data.stopIds.some((id) => !expected.has(id))
+  ) {
+    return {
+      ok: false as const,
+      error: "Stop list is out of date — reopen the route and try again",
+    };
+  }
+
+  for (const trip of trips) {
+    const times = trip.stopTimes.map((st) => ({
+      arrival: st.arrival,
+      departure: st.departure,
+    }));
+    await prisma.$transaction(async (tx) => {
+      await tx.stopTime.deleteMany({ where: { tripId: trip.id } });
+      await tx.stopTime.createMany({
+        data: data.stopIds.map((stopId, i) => ({
+          tripId: trip.id,
+          stopId,
+          sequence: i + 1,
+          arrival: times[i]?.arrival ?? null,
+          departure: times[i]?.departure ?? null,
+        })),
+      });
+    });
+  }
+
+  await prisma.routeStopOrderOverride.upsert({
+    where: {
+      routeId_directionId: {
+        routeId: data.routeId,
+        directionId: data.directionId,
+      },
+    },
+    create: { ...data, editedById: session.user.id },
+    update: { stopIds: data.stopIds, editedById: session.user.id },
+  });
 
   revalidateConsole();
   return { ok: true as const };

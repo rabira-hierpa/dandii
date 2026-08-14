@@ -7,11 +7,21 @@ export const BASEMAP_STYLE = "https://tiles.openfreemap.org/styles/positron";
 /** Addis Ababa city center. */
 export const ADDIS_CENTER = { longitude: 38.7578, latitude: 9.0107 };
 
-/** Line color by operator; grey when the route is closed. */
+/**
+ * Line colour: grey when closed, then the operator's own choice if they set
+ * one, otherwise the agency palette.
+ *
+ * Note it reads `colorOverride`, NOT the feed's `route_color`. The DT4A feed
+ * paints 446 of its 447 routes the same blue, so honouring route_color would
+ * flatten the whole network into one shade and destroy the agency colour-coding
+ * riders navigate by. Only a colour an operator actually chose overrides it.
+ */
 export const ROUTE_LINE_COLOR: ExpressionSpecification = [
   "case",
   ["==", ["get", "closed"], true],
   CLOSED_ROUTE_COLOR,
+  ["has", "colorOverride"],
+  ["concat", "#", ["get", "colorOverride"]],
   [
     "match",
     ["get", "operatorCode"],

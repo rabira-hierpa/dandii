@@ -37,7 +37,7 @@ type RouteRow = {
 export async function GET(request: NextRequest) {
   const bothDirections =
     request.nextUrl.searchParams.get("directions") === "both";
-  const [routes, active] = await Promise.all([
+  const [routes, active, colorOverrides] = await Promise.all([
     prisma.route.findMany({
       select: {
         id: true,
@@ -50,7 +50,16 @@ export async function GET(request: NextRequest) {
       },
     }),
     getActiveClosures(),
+    // Only an operator-chosen colour overrides the agency palette — see
+    // ROUTE_LINE_COLOR in map-style.ts for why the feed's route_color doesn't.
+    prisma.routeOverride.findMany({
+      where: { color: { not: null }, deletedAt: null },
+      select: { routeId: true, color: true },
+    }),
   ]);
+  const colorByRoute = new Map(
+    colorOverrides.map((o) => [o.routeId, o.color as string]),
+  );
 
   const byRoute = new Map<string, typeof active>();
   for (const c of active) {
@@ -74,6 +83,7 @@ export async function GET(request: NextRequest) {
           type: r.type,
           lengthMeters: r.lengthMeters,
           operatorCode: r.assignment?.operator.code ?? null,
+          colorOverride: colorByRoute.get(r.id) ?? null,
         })),
         byRoute,
         anchors,
@@ -98,6 +108,10 @@ export async function GET(request: NextRequest) {
       routeType: r.type,
       operatorCode: r.assignment?.operator.code ?? null,
       lengthMeters: r.lengthMeters,
+      // Omitted entirely when unset, so the layer's ["has", …] test works.
+      ...(colorByRoute.has(r.id)
+        ? { colorOverride: colorByRoute.get(r.id) }
+        : {}),
     };
 
     if (whole || !partial) {

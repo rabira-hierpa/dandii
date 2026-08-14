@@ -39,6 +39,8 @@ interface RouteMeta {
   type: number;
   lengthMeters: number | null;
   operatorCode: string | null;
+  /** Operator-chosen line colour, null when they haven't set one. */
+  colorOverride: string | null;
 }
 
 /** One direction of one route: its shape plus the stop order trips run it in. */
@@ -114,6 +116,9 @@ function featuresForDirection(
     lengthMeters: meta.lengthMeters,
     directionId: shape.directionId,
     shapeId: shape.shapeId,
+    // Omitted when unset so the layer's ["has", …] test falls through to the
+    // agency palette.
+    ...(meta.colorOverride ? { colorOverride: meta.colorOverride } : {}),
   };
   const key = `${meta.id}:${shape.shapeId}`;
 

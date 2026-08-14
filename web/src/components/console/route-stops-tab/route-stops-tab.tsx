@@ -1,8 +1,29 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { createStop, deleteStop, renameStop } from "@/actions/stop-edit";
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import {
+  createStop,
+  deleteStop,
+  renameStop,
+  reorderRouteStops,
+} from "@/actions/stop-edit";
+import { SortableStopRow } from "@/components/console/sortable-stop-row";
 import { useRouteEditorStore } from "@/stores/route-editor-store";
 import type { RouteEditorDetail, RouteStopRow } from "@/types/console";
 import { cx } from "@/utils/cx";
@@ -29,10 +50,61 @@ export function RouteStopsTab({ detail, onChanged }: RouteStopsTabProps) {
   const [newLat, setNewLat] = useState("");
   const [newLon, setNewLon] = useState("");
 
-  const stops = detail.stopsByDirection[directionId] ?? [];
   const direction = detail.directions.find(
     (d) => d.directionId === directionId,
   );
+
+  // Optimistic order so a drag lands instantly instead of waiting for the round
+  // trip. Cleared whenever the server data changes, which is what makes a
+  // rejected reorder snap back to the truth rather than lie about having saved.
+  const [dragOrder, setDragOrder] = useState<string[] | null>(null);
+  const stops = useMemo(() => {
+    // Indexed inside the memo: `?? []` allocates a fresh array every render, so
+    // hoisting it would make the dependency change on each pass and defeat the
+    // memo entirely.
+    const serverStops = detail.stopsByDirection[directionId] ?? [];
+    if (!dragOrder) return serverStops;
+    const byId = new Map(serverStops.map((s) => [s.id, s]));
+    const ordered = dragOrder
+      .map((id) => byId.get(id))
+      .filter((s): s is RouteStopRow => s !== undefined);
+    return ordered.length === serverStops.length ? ordered : serverStops;
+  }, [dragOrder, detail.stopsByDirection, directionId]);
+
+  const sensors = useSensors(
+    // 6px so a click on Edit/× isn't swallowed as a micro-drag.
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
+
+  const onDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const from = stops.findIndex((s) => s.id === active.id);
+    const to = stops.findIndex((s) => s.id === over.id);
+    if (from < 0 || to < 0) return;
+
+    const next = arrayMove(stops, from, to).map((s) => s.id);
+    setDragOrder(next);
+    setFeedback(null);
+    startTransition(async () => {
+      const result = await reorderRouteStops({
+        routeId: detail.id,
+        directionId,
+        stopIds: next,
+      });
+      if (result.ok) {
+        setFeedback({ kind: "ok", message: "Stop order saved" });
+        setDragOrder(null);
+        refresh();
+      } else {
+        setDragOrder(null); // snap back — the list on screen was not saved
+        setFeedback({ kind: "error", message: result.error });
+      }
+    });
+  };
 
   const refresh = () => {
     onChanged();
@@ -191,83 +263,49 @@ export function RouteStopsTab({ detail, onChanged }: RouteStopsTabProps) {
         ) : null}
       </div>
 
-      <ol className="flex max-h-[46vh] flex-col gap-1 overflow-y-auto">
-        {stops.map((stop) => (
-          <li
-            key={`${stop.sequence}-${stop.id}`}
-            className="flex items-center gap-2 rounded-lg border border-[#E2E6DE] bg-white px-2.5 py-1.5"
-          >
-            <span className="w-5 shrink-0 text-right text-[11px] font-medium text-[#8A9A8C]">
-              {stop.sequence}
-            </span>
-            {editingId === stop.id ? (
-              <input
-                value={draftName}
-                autoFocus
-                onChange={(e) => setDraftName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") submitRename(stop);
-                  if (e.key === "Escape") setEditingId(null);
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={onDragEnd}
+      >
+        <SortableContext
+          items={stops.map((s) => s.id)}
+          strategy={verticalListSortingStrategy}
+        >
+          <ol className="flex max-h-[46vh] flex-col gap-1 overflow-y-auto">
+            {stops.map((stop, i) => (
+              <SortableStopRow
+                key={stop.id}
+                stop={stop}
+                position={i + 1}
+                editing={editingId === stop.id}
+                draftName={draftName}
+                disabled={isPending}
+                onDraftChange={setDraftName}
+                onStartEdit={() => {
+                  setEditingId(stop.id);
+                  setDraftName(stop.name);
                 }}
-                onBlur={() => submitRename(stop)}
-                className={cx(inputClass, "min-w-0 flex-1 py-1")}
+                onCommitEdit={() => submitRename(stop)}
+                onCancelEdit={() => setEditingId(null)}
+                onDelete={() => submitDelete(stop)}
               />
-            ) : (
-              <>
-                <span className="min-w-0 flex-1 truncate text-[12.5px] text-[#1C2321]">
-                  {stop.name}
-                  {stop.edited && (
-                    <span className="ml-1.5 text-[10.5px] font-medium text-[#B45309]">
-                      edited
-                    </span>
-                  )}
-                  {stop.operatorCreated && (
-                    <span className="ml-1.5 text-[10.5px] font-medium text-[#1E40AF]">
-                      new
-                    </span>
-                  )}
-                </span>
-                {stop.otherRouteCount > 0 && (
-                  <span
-                    title={`Also served by ${stop.otherRouteCount} other route${stop.otherRouteCount === 1 ? "" : "s"}`}
-                    className="shrink-0 rounded-full bg-[#F1F3F4] px-1.5 py-0.5 text-[10.5px] font-medium text-[#5C6B5E]"
-                  >
-                    +{stop.otherRouteCount}
-                  </span>
-                )}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditingId(stop.id);
-                    setDraftName(stop.name);
-                  }}
-                  className="shrink-0 cursor-pointer text-[11.5px] font-semibold text-[#5C6B5E] hover:text-[#1C2321]"
-                >
-                  Edit
-                </button>
-                <button
-                  type="button"
-                  disabled={isPending || stop.otherRouteCount > 0}
-                  title={
-                    stop.otherRouteCount > 0
-                      ? `Served by ${stop.otherRouteCount} other route${stop.otherRouteCount === 1 ? "" : "s"} — removing it would shorten them too`
-                      : "Delete this stop"
-                  }
-                  onClick={() => submitDelete(stop)}
-                  className="shrink-0 cursor-pointer px-1 text-[13px] font-semibold text-[#B91C1C] hover:text-[#7F1D1D] disabled:cursor-not-allowed disabled:text-[#D6DCD0]"
-                >
-                  ×
-                </button>
-              </>
+            ))}
+            {stops.length === 0 && (
+              <li className="py-3 text-center text-[12.5px] text-[#7E9182]">
+                No stops on this direction.
+              </li>
             )}
-          </li>
-        ))}
-        {stops.length === 0 && (
-          <li className="py-3 text-center text-[12.5px] text-[#7E9182]">
-            No stops on this direction.
-          </li>
-        )}
-      </ol>
+          </ol>
+        </SortableContext>
+      </DndContext>
+
+      {stops.length > 1 && (
+        <p className="text-[11px] text-[#7E9182]">
+          Drag the handle to reorder. Times stay with the position, not the stop
+          — a run reaches its 5th call at the same time whichever stop that is.
+        </p>
+      )}
     </div>
   );
 }

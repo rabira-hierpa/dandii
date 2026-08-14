@@ -166,14 +166,21 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
   const setEditorLoading = useRouteEditorStore((s) => s.setDetailLoading);
   const resetEditor = useRouteEditorStore((s) => s.resetForRoute);
   const [detailReloadKey, setDetailReloadKey] = useState(0);
-  const reloadEditorDetail = useCallback(
-    () => setDetailReloadKey((k) => k + 1),
-    [],
-  );
 
   const loadGeojson = useCallback(async () => {
     setGeojson(await fetchRouteGeojson());
   }, []);
+
+  /**
+   * Re-read the route after an edit. Also refetches the map geometry, because
+   * edits change what is drawn — a new colour, a reordered stop list — and
+   * router.refresh() can't help: the geojson lives in client state from a
+   * fetch, not in a server component.
+   */
+  const reloadEditorDetail = useCallback(() => {
+    setDetailReloadKey((k) => k + 1);
+    void loadGeojson();
+  }, [loadGeojson]);
 
   useEffect(() => {
     let cancelled = false;
@@ -588,8 +595,12 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
               <div className="py-3 text-[12.5px] text-[#5C6B5E]">Loading…</div>
             )}
 
+            {/* Keyed on the route id so selecting a different route remounts the
+                tab. Without it the form's useState initialisers keep the first
+                route's values — every field, not just the visible ones. */}
             {activeTab === "details" && editorDetail && (
               <RouteDetailsTab
+                key={editorDetail.id}
                 detail={editorDetail}
                 onChanged={reloadEditorDetail}
               />
@@ -597,6 +608,7 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
 
             {activeTab === "stops" && editorDetail && (
               <RouteStopsTab
+                key={editorDetail.id}
                 detail={editorDetail}
                 onChanged={reloadEditorDetail}
               />

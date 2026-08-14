@@ -23,6 +23,7 @@ export interface OverrideApplyResult {
   stopsDeleted: number;
   routesDeleted: number;
   stopTimesRemoved: number;
+  directionsReordered: number;
   skipped: number;
 }
 
@@ -36,12 +37,77 @@ export async function applyOverrides(
     stopsDeleted: 0,
     routesDeleted: 0,
     stopTimesRemoved: 0,
+    directionsReordered: 0,
     skipped: 0,
   };
 
   result.skipped += await applyStopOverrides(prisma, result);
   result.skipped += await applyRouteOverrides(prisma, result);
+  result.skipped += await applyStopOrderOverrides(prisma, result);
   return result;
+}
+
+/**
+ * Replay reordered stop sequences.
+ *
+ * The feed has just restored its own ordering, so without this a reseed would
+ * quietly undo every reorder an operator made. Skips a direction whose stop set
+ * no longer matches the saved order — a newer feed may have added or dropped a
+ * call, and forcing a stale order onto it would silently delete real stops.
+ */
+async function applyStopOrderOverrides(
+  prisma: PrismaClient,
+  result: OverrideApplyResult,
+): Promise<number> {
+  const orders = await prisma.routeStopOrderOverride.findMany();
+  if (orders.length === 0) return 0;
+
+  let skipped = 0;
+  for (const order of orders) {
+    const trips = await prisma.trip.findMany({
+      where: { routeId: order.routeId, directionId: order.directionId },
+      select: {
+        id: true,
+        stopTimes: {
+          orderBy: { sequence: "asc" },
+          select: { stopId: true, arrival: true, departure: true },
+        },
+      },
+    });
+    if (trips.length === 0) {
+      skipped++;
+      continue;
+    }
+
+    const current = new Set(trips[0].stopTimes.map((st) => st.stopId));
+    const sameSet =
+      current.size === order.stopIds.length &&
+      order.stopIds.every((id) => current.has(id));
+    if (!sameSet) {
+      skipped++;
+      continue;
+    }
+
+    for (const trip of trips) {
+      // Times belong to positions, not stops — see reorderRouteStops.
+      const times = trip.stopTimes.map((st) => ({
+        arrival: st.arrival,
+        departure: st.departure,
+      }));
+      await prisma.stopTime.deleteMany({ where: { tripId: trip.id } });
+      await prisma.stopTime.createMany({
+        data: order.stopIds.map((stopId, i) => ({
+          tripId: trip.id,
+          stopId,
+          sequence: i + 1,
+          arrival: times[i]?.arrival ?? null,
+          departure: times[i]?.departure ?? null,
+        })),
+      });
+    }
+    result.directionsReordered++;
+  }
+  return skipped;
 }
 
 async function applyStopOverrides(

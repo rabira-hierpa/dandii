@@ -42,8 +42,9 @@ model User {
   leaderboardOptIn Boolean @default(false)
 
   /// Batch D: GTFS corrections this user made (audit trail for the editor).
-  stopOverrides  StopOverride[]
-  routeOverrides RouteOverride[]
+  stopOverrides    StopOverride[]
+  routeOverrides   RouteOverride[]
+  stopOrderEdits   RouteStopOrderOverride[]
 
   @@unique([email])
   @@map("user")
@@ -386,6 +387,33 @@ model StopOverride {
 
 /// A route-level correction: display names, map colors, and operator
 /// reassignment (which drives the per-operator `agency_id` in the export).
+/**
+ * An operator-reordered stop sequence for one direction of one route.
+ *
+ * Stored as the whole ordered list rather than a diff: a reorder is only
+ * meaningful as a complete sequence, and replaying "move index 3 to 5" against
+ * a feed whose stops changed underneath would corrupt the route silently.
+ *
+ * Applied to every trip in the direction. Times stay with the POSITION, not the
+ * stop — a run reaches its 5th call at 06:20 whichever stop that is, and
+ * carrying times along with stops would produce a non-monotonic timetable that
+ * fails GTFS validation.
+ *
+ * Same no-FK rule as [StopOverride] so a reseed cannot cascade it away.
+ */
+model RouteStopOrderOverride {
+  routeId     String
+  directionId Int
+  /// Ordered GTFS stop ids, first call to last.
+  stopIds     String[]
+  editedById  String
+  editedBy    User     @relation(fields: [editedById], references: [id])
+  editedAt    DateTime @updatedAt
+
+  @@id([routeId, directionId])
+  @@map("route_stop_order_override")
+}
+
 /// Same no-FK rule as [StopOverride]: routes are normally upserted by the seed,
 /// but the fresh-reseed path does `route.deleteMany()`, and overrides must
 /// survive that.

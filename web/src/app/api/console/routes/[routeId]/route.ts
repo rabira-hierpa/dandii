@@ -6,6 +6,7 @@ import type {
   RouteDirection,
   RouteEditorDetail,
   RouteStopRow,
+  RouteTripRow,
 } from "@/types/console";
 
 /**
@@ -41,7 +42,7 @@ export async function GET(
     return Response.json({ error: "Route not found" }, { status: 404 });
   }
 
-  const [override, trips] = await Promise.all([
+  const [override, trips, tripOverrides] = await Promise.all([
     prisma.routeOverride.findUnique({ where: { routeId } }),
     prisma.trip.findMany({
       where: { routeId },
@@ -50,12 +51,15 @@ export async function GET(
         id: true,
         directionId: true,
         headsign: true,
+        serviceId: true,
         shapeId: true,
         shape: { select: { geojson: true } },
         stopTimes: {
           orderBy: { sequence: "asc" },
           select: {
             sequence: true,
+            arrival: true,
+            departure: true,
             stop: {
               select: { id: true, name: true, lat: true, lon: true, origin: true },
             },
@@ -63,7 +67,13 @@ export async function GET(
         },
       },
     }),
+    // No FK to trip by design, so this can't be joined — but the table only
+    // ever holds rows an operator wrote, so reading it whole is cheap.
+    prisma.tripOverride.findMany({
+      select: { tripId: true, blockId: true },
+    }),
   ]);
+  const blockByTrip = new Map(tripOverrides.map((t) => [t.tripId, t.blockId]));
 
   // One representative trip per direction — trips in a direction share a stop
   // pattern, and the editor edits the pattern, not the individual runs.
@@ -128,6 +138,20 @@ export async function GET(
     }));
   }
 
+  const tripRows: RouteTripRow[] = trips.map((t) => ({
+    id: t.id,
+    directionId: t.directionId,
+    headsign: t.headsign,
+    serviceId: t.serviceId,
+    startTime: t.stopTimes[0]?.departure ?? t.stopTimes[0]?.arrival ?? null,
+    endTime:
+      t.stopTimes[t.stopTimes.length - 1]?.arrival ??
+      t.stopTimes[t.stopTimes.length - 1]?.departure ??
+      null,
+    blockId: blockByTrip.get(t.id) ?? null,
+    stopCount: t.stopTimes.length,
+  }));
+
   const detail: RouteEditorDetail = {
     id: route.id,
     shortName: route.shortName,
@@ -154,6 +178,7 @@ export async function GET(
       : null,
     directions,
     stopsByDirection,
+    trips: tripRows,
   };
 
   return Response.json(detail, {

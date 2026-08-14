@@ -54,6 +54,20 @@ export interface EditableRouteFields {
   continuousDropOff: number | null;
 }
 
+/** One trip, as the Trips tab lists it. */
+export interface RouteTripRow {
+  id: string;
+  directionId: number | null;
+  headsign: string | null;
+  serviceId: string;
+  /** First and last call, from stop_times. Null when the trip has no times. */
+  startTime: string | null;
+  endTime: string | null;
+  /** GTFS block_id — operator-supplied; the feed has no such column. */
+  blockId: string | null;
+  stopCount: number;
+}
+
 /** Everything the route editor loads for one selected route. */
 export interface RouteEditorDetail {
   id: string;
@@ -71,6 +85,7 @@ export interface RouteEditorDetail {
   directions: RouteDirection[];
   /** Stops keyed by directionId. */
   stopsByDirection: Record<number, RouteStopRow[]>;
+  trips: RouteTripRow[];
 }
 
 /**

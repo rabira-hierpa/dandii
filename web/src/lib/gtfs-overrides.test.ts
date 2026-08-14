@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyRouteOverridesToCsv,
   applyStopOverridesToCsv,
+  applyTripOverridesToCsv,
 } from "./gtfs-overrides";
 
 /** Shaped like the vendored DT4A feed, including a comma inside a long name. */
@@ -239,3 +240,47 @@ describe("tombstoned entities are omitted", () => {
     expect(dataRows(out)).toHaveLength(1);
   });
 });
+
+/** Mirrors data/gtfs-2026/combined/trips.txt — note there is no block_id. */
+const TRIPS_CSV = `service_id,trip_id,route_id,shape_id,direction_id,trip_headsign
+S1,t1,10400029,10399952,0,Megenagna Terminal
+S1,t2,10400029,10399951,1,Legedadi Mission
+`;
+
+describe("applyTripOverridesToCsv", () => {
+  const header = (csv: string) => csv.split("\n")[0].split(",");
+
+  it("widens the header to emit block_id, which the feed has no column for", () => {
+    const out = applyTripOverridesToCsv(TRIPS_CSV, [
+      { tripId: "t1", blockId: "B12", headsign: null },
+    ]);
+    expect(header(TRIPS_CSV)).not.toContain("block_id");
+    expect(header(out)).toContain("block_id");
+    expect(out).toContain("B12");
+  });
+
+  it("leaves an untouched trip's block empty rather than ragged", () => {
+    const rows = TRIPS_CSV.trim().split("\n").length;
+    const out = applyTripOverridesToCsv(TRIPS_CSV, [
+      { tripId: "t1", blockId: "B12", headsign: null },
+    ]);
+    expect(out.trim().split("\n")).toHaveLength(rows);
+    const cols = out.split("\n")[0].split(",").length;
+    for (const line of out.trim().split("\n").slice(1)) {
+      expect(line.split(",")).toHaveLength(cols);
+    }
+  });
+
+  it("patches trip_headsign into the column that already exists", () => {
+    const out = applyTripOverridesToCsv(TRIPS_CSV, [
+      { tripId: "t2", blockId: null, headsign: "Legedadi via Tafo" },
+    ]);
+    expect(header(out)).toEqual(header(TRIPS_CSV)); // no widening needed
+    expect(out).toContain("Legedadi via Tafo");
+  });
+
+  it("returns the feed untouched when no trip was edited", () => {
+    expect(applyTripOverridesToCsv(TRIPS_CSV, [])).toBe(TRIPS_CSV);
+  });
+});
+

@@ -52,12 +52,20 @@ export interface CreatedRoute {
   url: string | null;
 }
 
+/** A per-trip correction bound for trips.txt. */
+export interface TripFieldOverride {
+  tripId: string;
+  blockId: string | null;
+  headsign: string | null;
+}
+
 /** Everything the exporter needs to turn the base feed into the edited feed. */
 export interface FeedOverrides {
   stopNames: StopNameOverride[];
   routeFields: RouteFieldOverride[];
   createdStops: CreatedStop[];
   createdRoutes: CreatedRoute[];
+  tripFields: TripFieldOverride[];
   /** Tombstoned ids — omitted from the export entirely. */
   deletedStopIds: string[];
   deletedRouteIds: string[];
@@ -68,6 +76,7 @@ export const EMPTY_FEED_OVERRIDES: FeedOverrides = {
   routeFields: [],
   createdStops: [],
   createdRoutes: [],
+  tripFields: [],
   deletedStopIds: [],
   deletedRouteIds: [],
 };
@@ -79,6 +88,7 @@ export function hasNoOverrides(o: FeedOverrides): boolean {
     o.routeFields.length === 0 &&
     o.createdStops.length === 0 &&
     o.createdRoutes.length === 0 &&
+    o.tripFields.length === 0 &&
     o.deletedStopIds.length === 0 &&
     o.deletedRouteIds.length === 0
   );

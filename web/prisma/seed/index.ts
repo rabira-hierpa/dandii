@@ -383,7 +383,8 @@ async function main() {
   console.log(
     `  ${overrides.stopsRenamed} stops renamed, ${overrides.routesEdited} routes edited, ` +
       `${overrides.operatorsReassigned} operators reassigned, ` +
-      `${overrides.directionsReordered} directions reordered` +
+      `${overrides.directionsReordered} directions reordered, ` +
+      `${overrides.tripsEdited} trips edited` +
       (overrides.stopsDeleted + overrides.routesDeleted > 0
         ? `, ${overrides.stopsDeleted} stops and ${overrides.routesDeleted} routes deleted ` +
           `(${overrides.stopTimesRemoved} stop_times went with them)`

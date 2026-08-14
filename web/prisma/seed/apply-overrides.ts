@@ -24,6 +24,7 @@ export interface OverrideApplyResult {
   routesDeleted: number;
   stopTimesRemoved: number;
   directionsReordered: number;
+  tripsEdited: number;
   skipped: number;
 }
 
@@ -38,13 +39,53 @@ export async function applyOverrides(
     routesDeleted: 0,
     stopTimesRemoved: 0,
     directionsReordered: 0,
+    tripsEdited: 0,
     skipped: 0,
   };
 
   result.skipped += await applyStopOverrides(prisma, result);
   result.skipped += await applyRouteOverrides(prisma, result);
   result.skipped += await applyStopOrderOverrides(prisma, result);
+  result.skipped += await applyTripOverrides(prisma, result);
   return result;
+}
+
+/**
+ * Replay per-trip edits. Only `headsign` has a Trip column; `blockId` lives on
+ * the override alone and reaches riders through the regenerated feed.
+ */
+async function applyTripOverrides(
+  prisma: PrismaClient,
+  result: OverrideApplyResult,
+): Promise<number> {
+  const overrides = await prisma.tripOverride.findMany({
+    where: { headsign: { not: null } },
+    select: { tripId: true, headsign: true },
+  });
+  if (overrides.length === 0) return 0;
+
+  const live = new Set(
+    (
+      await prisma.trip.findMany({
+        where: { id: { in: overrides.map((o) => o.tripId) } },
+        select: { id: true },
+      })
+    ).map((t) => t.id),
+  );
+
+  let skipped = 0;
+  for (const o of overrides) {
+    if (!live.has(o.tripId)) {
+      skipped++;
+      continue;
+    }
+    await prisma.trip.update({
+      where: { id: o.tripId },
+      data: { headsign: o.headsign },
+    });
+    result.tripsEdited++;
+  }
+  return skipped;
 }
 
 /**

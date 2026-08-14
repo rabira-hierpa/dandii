@@ -45,6 +45,7 @@ model User {
   stopOverrides    StopOverride[]
   routeOverrides   RouteOverride[]
   stopOrderEdits   RouteStopOrderOverride[]
+  tripEdits        TripOverride[]
 
   @@unique([email])
   @@map("user")
@@ -387,6 +388,28 @@ model StopOverride {
 
 /// A route-level correction: display names, map colors, and operator
 /// reassignment (which drives the per-operator `agency_id` in the export).
+/**
+ * Per-trip corrections.
+ *
+ * `blockId` is GTFS block_id — which vehicle runs which trips back to back, so
+ * a rider staying aboard between two "different" trips isn't told to alight and
+ * reboard. The DT4A feed has no block_id column at all, so this is purely
+ * operator knowledge, and emitting it means widening trips.txt on export.
+ *
+ * Same no-FK rule as [StopOverride]: the seed deletes and reloads every trip,
+ * and a cascade here would erase the operator's work on each reseed.
+ */
+model TripOverride {
+  tripId     String   @id
+  blockId    String?
+  headsign   String?
+  editedById String
+  editedBy   User     @relation(fields: [editedById], references: [id])
+  editedAt   DateTime @updatedAt
+
+  @@map("trip_override")
+}
+
 /**
  * An operator-reordered stop sequence for one direction of one route.
  *

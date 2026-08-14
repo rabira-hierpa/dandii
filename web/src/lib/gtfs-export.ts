@@ -13,6 +13,7 @@ import {
 import {
   applyRouteOverridesToCsv,
   applyStopOverridesToCsv,
+  applyTripOverridesToCsv,
 } from "@/lib/gtfs-overrides";
 import { hasNoOverrides, type FeedOverrides } from "@/types/gtfs";
 import { prisma } from "@/lib/prisma";
@@ -72,7 +73,8 @@ const REPLACED = new Set([
  * ids. All empty in the common case, and then the tables copy verbatim.
  */
 async function loadFeedOverrides(): Promise<FeedOverrides> {
-  const [stopRows, routeRows, createdStops, createdRoutes] = await Promise.all([
+  const [stopRows, routeRows, createdStops, createdRoutes, tripRows] =
+    await Promise.all([
     prisma.stopOverride.findMany({
       select: { stopId: true, name: true, deletedAt: true },
     }),
@@ -107,6 +109,9 @@ async function loadFeedOverrides(): Promise<FeedOverrides> {
         textColor: true,
       },
     }),
+    prisma.tripOverride.findMany({
+      select: { tripId: true, blockId: true, headsign: true },
+    }),
   ]);
 
   const routeOverrideById = new Map(routeRows.map((r) => [r.routeId, r]));
@@ -116,6 +121,7 @@ async function loadFeedOverrides(): Promise<FeedOverrides> {
       .map((s) => ({ stopId: s.stopId, name: s.name as string })),
     routeFields: routeRows.filter((r) => r.deletedAt === null),
     createdStops,
+    tripFields: tripRows,
     // A created route can also carry an override row (renamed after creation),
     // so desc/url come from there when present.
     createdRoutes: createdRoutes.map((r) => ({
@@ -170,6 +176,9 @@ async function buildZip(
         overrides.createdRoutes,
         overrides.deletedRouteIds,
       ),
+    );
+    edited.set("trips.txt", (base) =>
+      applyTripOverridesToCsv(base, overrides.tripFields),
     );
   }
 

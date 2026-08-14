@@ -24,6 +24,7 @@ import type {
   CreatedStop,
   RouteFieldOverride,
   StopNameOverride,
+  TripFieldOverride,
 } from "@/types/gtfs";
 
 type Row = Record<string, string>;
@@ -189,5 +190,34 @@ export function applyRouteOverridesToCsv(
       route_desc: r.desc ?? "",
       ...(r.url !== null ? { route_url: r.url } : {}),
     })),
+  });
+}
+
+/**
+ * `trips.txt` with per-trip corrections patched in.
+ *
+ * The DT4A feed has no `block_id` column, so emitting one always widens the
+ * header — without that an operator's block grouping would vanish silently on
+ * publish, and blocks exist precisely to stop riders being told to change
+ * vehicles when they don't have to.
+ */
+export function applyTripOverridesToCsv(
+  content: string,
+  overrides: TripFieldOverride[],
+): string {
+  if (overrides.length === 0) return content;
+  const byId = new Map(overrides.map((o) => [o.tripId, o]));
+
+  const extraColumns: string[] = [];
+  if (overrides.some((o) => o.blockId !== null)) extraColumns.push("block_id");
+
+  return rewriteCsv(content, "trip_id", {
+    extraColumns,
+    patch: (row) => {
+      const o = byId.get(row.trip_id);
+      if (!o) return;
+      if (o.blockId !== null) row.block_id = o.blockId;
+      if (o.headsign !== null) row.trip_headsign = o.headsign;
+    },
   });
 }

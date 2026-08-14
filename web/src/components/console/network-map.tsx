@@ -455,7 +455,10 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
             )}
 
             {activeTab === "trips" && editorDetail && (
-              <RouteTripsTab detail={editorDetail} />
+              <RouteTripsTab
+                detail={editorDetail}
+                onChanged={reloadEditorDetail}
+              />
             )}
 
             {activeTab === "service" && (

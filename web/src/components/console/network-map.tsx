@@ -6,9 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
-  useTransition,
 } from "react";
-import { useRouter } from "next/navigation";
 import MapGl, {
   Layer,
   Source,
@@ -17,16 +15,15 @@ import MapGl, {
 } from "react-map-gl/maplibre";
 import type { FilterSpecification } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { createClosure, endClosure } from "@/actions/closures";
 import { RouteDetailsTab } from "@/components/console/route-details-tab";
+import { RouteServiceTab } from "@/components/console/route-service-tab";
 import { RouteStopsTab } from "@/components/console/route-stops-tab";
 import { RouteTabs } from "@/components/console/route-tabs";
 import { RouteTripsTab } from "@/components/console/route-trips-tab";
 import { useRouteEditorStore } from "@/stores/route-editor-store";
 import type { RouteEditorDetail } from "@/types/console";
-import { DateTimePicker } from "@/components/application/date-picker/date-time-picker";
 import { RouteChip } from "@/components/console/route-chip";
-import { describeClosure, type ClosureKind } from "@/lib/closures";
+import type { ClosureKind } from "@/lib/closures";
 import { LayersPanel } from "@/components/map/layers-panel";
 import {
   ADDIS_CENTER,
@@ -42,9 +39,6 @@ import type { StopSearchResult } from "@/components/map/types";
 import { ga } from "@/lib/gtag";
 import {
   CLOSED_ROUTE_COLOR,
-  CLOSURE_REASON_LABELS,
-  CLOSURE_REASONS,
-  MAINTAINER_REASONS,
   OPERATOR_CODES,
   OPERATOR_META,
   type ClosureReasonValue,
@@ -70,7 +64,6 @@ export interface NetworkRoute {
   } | null;
 }
 
-type RouteStop = { id: string; name: string };
 
 function statusLabel(closure: NetworkRoute["closure"]): string {
   if (!closure) return "Open";
@@ -97,11 +90,6 @@ interface NetworkMapProps {
 // Module-level so it persists across renders without a ref read during render.
 const hoverStopCache = new Map<string, StopSearchResult[]>();
 
-function startOfMinute(date: Date) {
-  const next = new Date(date);
-  next.setSeconds(0, 0);
-  return next;
-}
 
 /**
  * The console asks for both directions — operators edit each line separately,
@@ -115,7 +103,6 @@ function fetchRouteGeojson() {
 }
 
 export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
-  const router = useRouter();
   const mapRef = useRef<MapRef>(null);
   const {
     selectedRouteId,
@@ -129,8 +116,6 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
     null,
   );
   const [panelSearch, setPanelSearch] = useState("");
-  const [isPending, startTransition] = useTransition();
-  const [feedback, setFeedback] = useState<string | null>(null);
 
   // Hover preview — mirrors the public map so operators get the same feel.
   const [hoveredRouteId, setHoveredRouteId] = useState<string | null>(null);
@@ -139,24 +124,6 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
     stops: StopSearchResult[];
   } | null>(null);
 
-  const [reason, setReason] = useState<ClosureReasonValue>(
-    isMaintainer ? "MAINTENANCE" : "PUBLIC_HOLIDAY",
-  );
-  const [note, setNote] = useState("");
-  const [startsAt, setStartsAt] = useState(() => startOfMinute(new Date()));
-  const [endsAt, setEndsAt] = useState(() =>
-    startOfMinute(new Date(Date.now() + 24 * 60 * 60 * 1000)),
-  );
-  const [dateError, setDateError] = useState<string | null>(null);
-  // Floor for "no past dates" — refreshed when the selected route changes so a
-  // long-lived panel doesn't keep a stale min from hours ago.
-  const [nowFloor, setNowFloor] = useState(() => startOfMinute(new Date()));
-  const [scope, setScope] = useState<"whole" | "partial">("whole");
-  const [kind, setKind] = useState<"SEVERED" | "SKIPPED">("SEVERED");
-  const [fromStopId, setFromStopId] = useState("");
-  const [toStopId, setToStopId] = useState("");
-  const [routeStops, setRouteStops] = useState<RouteStop[]>([]);
-  const [stopsLoading, setStopsLoading] = useState(false);
 
   const activeTab = useRouteEditorStore((s) => s.activeTab);
   const editorDetail = useRouteEditorStore((s) => s.detail);
@@ -207,33 +174,6 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
     (r) => r.closure?.kind !== "WHOLE_ROUTE",
   );
 
-  // Load stop list when an open route is selected for the partial form.
-  useEffect(() => {
-    if (!selectedRouteId || selected?.closure) return;
-    let cancelled = false;
-    queueMicrotask(() => {
-      if (!cancelled) setStopsLoading(true);
-    });
-    void fetch(`/api/routes/${selectedRouteId}`)
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data: { stops?: RouteStop[] } | null) => {
-        if (cancelled) return;
-        setRouteStops(data?.stops ?? []);
-        setFromStopId("");
-        setToStopId("");
-        setScope("whole");
-        setKind("SEVERED");
-      })
-      .catch(() => {
-        if (!cancelled) setRouteStops([]);
-      })
-      .finally(() => {
-        if (!cancelled) setStopsLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedRouteId, selected?.closure]);
 
   // Editor payload for the selected route (tabs read this).
   useEffect(() => {
@@ -293,24 +233,7 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
     });
   }, [focusedStop]);
 
-  const previewSentence = useMemo(() => {
-    if (
-      scope !== "partial" ||
-      !fromStopId ||
-      !toStopId ||
-      routeStops.length === 0
-    ) {
-      return null;
-    }
-    return describeClosure({ kind, fromStopId, toStopId }, routeStops);
-  }, [scope, kind, fromStopId, toStopId, routeStops]);
 
-  const partialReady =
-    scope === "whole" ||
-    (Boolean(fromStopId) &&
-      Boolean(toStopId) &&
-      fromStopId !== toStopId &&
-      Boolean(kind));
 
   const isOperatorVisible = useCallback(
     (code: OperatorCode | null) => !code || !hiddenOperators.includes(code),
@@ -452,125 +375,14 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
     else map.once("idle", apply);
   }, [effectiveHover]);
 
-  const availableReasons = isMaintainer ? MAINTAINER_REASONS : CLOSURE_REASONS;
 
-  const onStartsAtChange = (next: Date) => {
-    const floor = startOfMinute(new Date());
-    const clamped = next < floor ? floor : next;
-    setNowFloor(floor);
-    setStartsAt(clamped);
-    setDateError(null);
-    if (endsAt <= clamped) {
-      setEndsAt(new Date(clamped.getTime() + 60 * 60 * 1000));
-    }
-  };
 
-  const onEndsAtChange = (next: Date) => {
-    const floor = startOfMinute(new Date());
-    setNowFloor(floor);
-    const minEnd = startsAt > floor ? startsAt : floor;
-    setEndsAt(
-      next <= minEnd ? new Date(minEnd.getTime() + 60 * 60 * 1000) : next,
-    );
-    setDateError(null);
-  };
 
-  const submitClosure = () => {
-    if (!selected || !partialReady) return;
-    setFeedback(null);
 
-    const floor = startOfMinute(new Date());
-    setNowFloor(floor);
-    const grace = floor.getTime() - 60_000;
-    if (startsAt.getTime() < grace) {
-      setDateError("Start cannot be in the past");
-      return;
-    }
-    if (endsAt.getTime() < grace) {
-      setDateError("End cannot be in the past");
-      return;
-    }
-    if (endsAt <= startsAt) {
-      setDateError("End must be after start");
-      return;
-    }
-    setDateError(null);
-
-    startTransition(async () => {
-      try {
-        const result = await createClosure({
-          routeId: selected.id,
-          reason,
-          note: note || undefined,
-          startsAt,
-          endsAt,
-          kind: scope === "whole" ? "WHOLE_ROUTE" : kind,
-          fromStopId: scope === "partial" ? fromStopId : null,
-          toStopId: scope === "partial" ? toStopId : null,
-        });
-        if (result.ok) {
-          ga.consoleCloseRoute(selected.id, reason);
-          setFeedback(
-            scope === "partial"
-              ? `${selected.shortName} partially closed · ${CLOSURE_REASON_LABELS[reason]}`
-              : `${selected.shortName} closed · ${CLOSURE_REASON_LABELS[reason]}`,
-          );
-          setNote("");
-          setScope("whole");
-          await loadGeojson();
-          router.refresh();
-        } else {
-          setFeedback(result.error);
-        }
-      } catch {
-        setFeedback("Not allowed to create closures");
-      }
-    });
-  };
-
-  const submitReopen = (
-    closureId: string,
-    routeId: string,
-    shortName: string,
-  ) => {
-    setFeedback(null);
-    startTransition(async () => {
-      try {
-        const result = await endClosure(closureId);
-        if (result.ok) {
-          ga.consoleReopenRoute(routeId);
-          setFeedback(`${shortName} reopened`);
-          await loadGeojson();
-          router.refresh();
-        } else {
-          setFeedback(result.error);
-        }
-      } catch {
-        setFeedback("Not allowed to end closures");
-      }
-    });
-  };
 
   return (
     <div className="flex items-start gap-4 max-xl:flex-col">
       <div className="flex w-90 shrink-0 flex-col gap-3 max-xl:w-full">
-        {feedback && (
-          <div
-            className={cx(
-              "rounded-full border px-3 py-1.5 text-[12.5px]",
-              feedback.includes("Not allowed") ||
-                feedback.toLowerCase().includes("must") ||
-                feedback.toLowerCase().includes("invalid") ||
-                feedback.toLowerCase().includes("need") ||
-                feedback.toLowerCase().includes("past") ||
-                feedback.toLowerCase().includes("cannot")
-                ? "border-[#FCA5A5] bg-[#FEF2F2] text-[#B91C1C]"
-                : "border-[#86EFAC] bg-[#DCFCE7] text-[#15803D]",
-            )}
-          >
-            {feedback}
-          </div>
-        )}
 
         {selected ? (
           <div className="flex flex-col gap-3 rounded-xl border border-[#E2E6DE] bg-white p-4">
@@ -646,234 +458,13 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
               <RouteTripsTab detail={editorDetail} />
             )}
 
-            {activeTab === "service" && (selected.closure ? (
-              <>
-                <div
-                  className="rounded-lg px-3 py-2 text-[12.5px]"
-                  style={{
-                    background:
-                      selected.closure.kind === "WHOLE_ROUTE"
-                        ? "#FEF2F2"
-                        : "#FFF7ED",
-                    color:
-                      selected.closure.kind === "WHOLE_ROUTE"
-                        ? "#991B1B"
-                        : "#9A3412",
-                  }}
-                >
-                  <div className="font-semibold">
-                    {statusLabel(selected.closure)}
-                  </div>
-                  <ClosureSummary
-                    closure={selected.closure}
-                    routeId={selected.id}
-                  />
-                  <div className="mt-1">
-                    {CLOSURE_REASON_LABELS[selected.closure.reason]}
-                    {selected.closure.note && ` — ${selected.closure.note}`}
-                  </div>
-                  <div className="mt-0.5 text-[11.5px] opacity-75">
-                    until {new Date(selected.closure.endsAt).toLocaleString()}
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() =>
-                    submitReopen(
-                      selected.closure!.id,
-                      selected.id,
-                      selected.shortName,
-                    )
-                  }
-                  disabled={isPending}
-                  className="cursor-pointer self-start rounded-lg border border-[#86EFAC] bg-white px-3.5 py-1.5 text-[12.5px] font-semibold text-[#15803D] hover:bg-[#F0FDF4] disabled:opacity-50"
-                >
-                  {isPending ? "Reopening…" : "Reopen route"}
-                </button>
-              </>
-            ) : (
-              <div className="flex flex-col gap-2.5">
-                <fieldset className="flex flex-col gap-1.5">
-                  <legend className="text-xs font-semibold text-[#5C6B5E]">
-                    Scope
-                  </legend>
-                  <label className="flex cursor-pointer items-center gap-2 text-[13px] text-[#1C2321]">
-                    <input
-                      type="radio"
-                      name="scope"
-                      checked={scope === "whole"}
-                      onChange={() => setScope("whole")}
-                    />
-                    Whole route
-                  </label>
-                  <label className="flex cursor-pointer items-center gap-2 text-[13px] text-[#1C2321]">
-                    <input
-                      type="radio"
-                      name="scope"
-                      checked={scope === "partial"}
-                      onChange={() => setScope("partial")}
-                    />
-                    Part of the route
-                  </label>
-                </fieldset>
-
-                {scope === "partial" && (
-                  <>
-                    {stopsLoading ? (
-                      <div className="text-[12.5px] text-[#5C6B5E]">
-                        Loading stops…
-                      </div>
-                    ) : routeStops.length === 0 ? (
-                      <div className="text-[12.5px] text-[#B91C1C]">
-                        Couldn’t load stops for this route.
-                      </div>
-                    ) : (
-                      <>
-                        <label className="flex flex-col gap-1 text-xs font-semibold text-[#5C6B5E]">
-                          Closed from
-                          <select
-                            value={fromStopId}
-                            onChange={(e) => setFromStopId(e.target.value)}
-                            className="cursor-pointer rounded-lg border border-[#D6DCD0] bg-white px-2.5 py-2 text-[13px] font-normal text-[#1C2321]"
-                          >
-                            <option value="">Select stop…</option>
-                            {routeStops.map((s) => (
-                              <option key={s.id} value={s.id}>
-                                {s.name}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <label className="flex flex-col gap-1 text-xs font-semibold text-[#5C6B5E]">
-                          Closed to (inclusive)
-                          <select
-                            value={toStopId}
-                            onChange={(e) => setToStopId(e.target.value)}
-                            className="cursor-pointer rounded-lg border border-[#D6DCD0] bg-white px-2.5 py-2 text-[13px] font-normal text-[#1C2321]"
-                          >
-                            <option value="">Select stop…</option>
-                            {routeStops.map((s) => (
-                              <option key={s.id} value={s.id}>
-                                {s.name}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <fieldset className="flex flex-col gap-2">
-                          <legend className="text-xs font-semibold text-[#5C6B5E]">
-                            What happens on the road?
-                          </legend>
-                          <label className="flex cursor-pointer gap-2 rounded-lg border border-[#D6DCD0] p-2.5 text-[12.5px] text-[#1C2321]">
-                            <input
-                              type="radio"
-                              name="kind"
-                              className="mt-0.5"
-                              checked={kind === "SEVERED"}
-                              onChange={() => setKind("SEVERED")}
-                            />
-                            <span>
-                              <span className="font-semibold">
-                                Road is blocked — buses can’t get through
-                              </span>
-                              <span className="mt-0.5 block text-[11.5px] text-[#5C6B5E]">
-                                Cuts the route in two
-                              </span>
-                            </span>
-                          </label>
-                          <label className="flex cursor-pointer gap-2 rounded-lg border border-[#D6DCD0] p-2.5 text-[12.5px] text-[#1C2321]">
-                            <input
-                              type="radio"
-                              name="kind"
-                              className="mt-0.5"
-                              checked={kind === "SKIPPED"}
-                              onChange={() => setKind("SKIPPED")}
-                            />
-                            <span>
-                              <span className="font-semibold">
-                                Buses detour around it — they just skip these
-                                stops
-                              </span>
-                              <span className="mt-0.5 block text-[11.5px] text-[#5C6B5E]">
-                                Line still runs end-to-end
-                              </span>
-                            </span>
-                          </label>
-                        </fieldset>
-                        <div
-                          aria-live="polite"
-                          className="rounded-lg bg-[#F8FAF6] px-3 py-2 text-[12.5px] text-[#3D4A3F]"
-                        >
-                          {previewSentence ??
-                            "Pick two stops to see what riders will see."}
-                        </div>
-                      </>
-                    )}
-                  </>
-                )}
-
-                <label className="flex flex-col gap-1 text-xs font-semibold text-[#5C6B5E]">
-                  Reason
-                  <select
-                    value={reason}
-                    onChange={(e) =>
-                      setReason(e.target.value as ClosureReasonValue)
-                    }
-                    className="cursor-pointer rounded-lg border border-[#D6DCD0] bg-white px-2.5 py-2 text-[13px] font-normal text-[#1C2321]"
-                  >
-                    {availableReasons.map((value) => (
-                      <option key={value} value={value}>
-                        {CLOSURE_REASON_LABELS[value]}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="flex flex-col gap-1 text-xs font-semibold text-[#5C6B5E]">
-                  Note (optional)
-                  <input
-                    value={note}
-                    onChange={(e) => setNote(e.target.value)}
-                    placeholder="e.g. Adwa Victory Day"
-                    className="rounded-lg border border-[#D6DCD0] bg-white px-2.5 py-2 text-[13px] font-normal text-[#1C2321]"
-                  />
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  <DateTimePicker
-                    label="From"
-                    value={startsAt}
-                    minValue={nowFloor}
-                    onChange={onStartsAtChange}
-                    isInvalid={Boolean(
-                      dateError?.toLowerCase().includes("start"),
-                    )}
-                  />
-                  <DateTimePicker
-                    label="Until"
-                    value={endsAt}
-                    minValue={startsAt > nowFloor ? startsAt : nowFloor}
-                    onChange={onEndsAtChange}
-                    isInvalid={Boolean(
-                      dateError && !dateError.toLowerCase().includes("start"),
-                    )}
-                  />
-                </div>
-                {dateError && (
-                  <p className="text-[12px] font-medium text-[#B91C1C]">
-                    {dateError}
-                  </p>
-                )}
-                <button
-                  onClick={submitClosure}
-                  disabled={isPending || !partialReady}
-                  className="cursor-pointer self-start rounded-lg border border-[#FCA5A5] bg-white px-3.5 py-1.5 text-[12.5px] font-semibold text-[#B91C1C] hover:bg-[#FEF2F2] disabled:opacity-50"
-                >
-                  {isPending
-                    ? "Closing…"
-                    : scope === "partial"
-                      ? "Close this section"
-                      : "Close route"}
-                </button>
-              </div>
-            ))}
+            {activeTab === "service" && (
+              <RouteServiceTab
+                route={selected}
+                isMaintainer={isMaintainer}
+                onChanged={reloadEditorDetail}
+              />
+            )}
           </div>
         ) : (
           <div className="rounded-xl border border-[#E2E6DE] bg-white p-4 text-[13px] text-[#5C6B5E]">
@@ -1137,35 +728,4 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
       </div>
     </div>
   );
-}
-
-/** Rider-facing sentence for an active closure (fetches stops when partial). */
-function ClosureSummary({
-  closure,
-  routeId,
-}: {
-  readonly closure: NonNullable<NetworkRoute["closure"]>;
-  readonly routeId: string;
-}) {
-  const [summary, setSummary] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (closure.kind === "WHOLE_ROUTE") return;
-    let cancelled = false;
-    void fetch(`/api/routes/${routeId}`)
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data: { stops?: RouteStop[] } | null) => {
-        if (cancelled || !data?.stops) return;
-        setSummary(describeClosure(closure, data.stops));
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [closure, routeId]);
-
-  const text =
-    closure.kind === "WHOLE_ROUTE" ? describeClosure(closure, []) : summary;
-  if (!text) return null;
-  return <div className="mt-1">{text}</div>;
 }

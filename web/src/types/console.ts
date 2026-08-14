@@ -16,6 +16,12 @@ export interface RouteDirection {
   stopCount: number;
 }
 
+/** Minimal stop shape for pickers and summaries. */
+export interface RouteStop {
+  id: string;
+  name: string;
+}
+
 /** A stop on a route, in trip order, with where it came from. */
 export interface RouteStopRow {
   id: string;

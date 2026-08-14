@@ -22,6 +22,17 @@ interface RouteEditorState {
   setDetail: (detail: RouteEditorDetail | null) => void;
   setDetailLoading: (loading: boolean) => void;
 
+  /**
+   * A stop the map should fly to. The Stops tab sets it on click; the map
+   * watches it and moves. Routed through the store rather than a callback so
+   * the tab never holds a map handle — it has no business owning one.
+   *
+   * `nonce` makes clicking the same stop twice fly again: without it the value
+   * is unchanged and the effect never re-runs.
+   */
+  focusedStop: { id: string; lat: number; lon: number; nonce: number } | null;
+  focusStop: (stop: { id: string; lat: number; lon: number }) => void;
+
   /** Banner under the tab bar. Cleared on tab change and on route change. */
   feedback: { kind: "ok" | "error"; message: string } | null;
   setFeedback: (feedback: RouteEditorState["feedback"]) => void;
@@ -42,6 +53,12 @@ export const useRouteEditorStore = create<RouteEditorState>((set) => ({
   setDetail: (detail) => set({ detail }),
   setDetailLoading: (detailLoading) => set({ detailLoading }),
 
+  focusedStop: null,
+  focusStop: (stop) =>
+    set((state) => ({
+      focusedStop: { ...stop, nonce: (state.focusedStop?.nonce ?? 0) + 1 },
+    })),
+
   feedback: null,
   setFeedback: (feedback) => set({ feedback }),
 
@@ -51,5 +68,6 @@ export const useRouteEditorStore = create<RouteEditorState>((set) => ({
       directionId: 0,
       detail: null,
       feedback: null,
+      focusedStop: null,
     }),
 }));

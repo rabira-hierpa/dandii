@@ -16,6 +16,7 @@ interface SortableStopRowProps {
   readonly onCommitEdit: () => void;
   readonly onCancelEdit: () => void;
   readonly onDelete: () => void;
+  readonly onFocusOnMap: () => void;
 }
 
 const inputClass =
@@ -32,6 +33,7 @@ export function SortableStopRow({
   onCommitEdit,
   onCancelEdit,
   onDelete,
+  onFocusOnMap,
 }: SortableStopRowProps) {
   const {
     attributes,
@@ -84,7 +86,12 @@ export function SortableStopRow({
         />
       ) : (
         <>
-          <span className="min-w-0 flex-1 truncate text-[12.5px] text-[#1C2321]">
+          <button
+            type="button"
+            onClick={onFocusOnMap}
+            title="Show this stop on the map"
+            className="min-w-0 flex-1 cursor-pointer truncate text-left text-[12.5px] text-[#1C2321] hover:text-[#B45309] hover:underline"
+          >
             {stop.name}
             {stop.edited && (
               <span className="ml-1.5 text-[10.5px] font-medium text-[#B45309]">
@@ -96,7 +103,7 @@ export function SortableStopRow({
                 new
               </span>
             )}
-          </span>
+          </button>
           {blocked && (
             <span
               title={`Also served by ${stop.otherRouteCount} other route${stop.otherRouteCount === 1 ? "" : "s"}`}

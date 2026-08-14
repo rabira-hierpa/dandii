@@ -162,6 +162,8 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
   const editorDetail = useRouteEditorStore((s) => s.detail);
   const editorLoading = useRouteEditorStore((s) => s.detailLoading);
   const editorFeedback = useRouteEditorStore((s) => s.feedback);
+  const editorDirectionId = useRouteEditorStore((s) => s.directionId);
+  const focusedStop = useRouteEditorStore((s) => s.focusedStop);
   const setEditorDetail = useRouteEditorStore((s) => s.setDetail);
   const setEditorLoading = useRouteEditorStore((s) => s.setDetailLoading);
   const resetEditor = useRouteEditorStore((s) => s.resetForRoute);
@@ -264,6 +266,32 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
     setEditorDetail,
     setEditorLoading,
   ]);
+
+  /**
+   * Stops of the selected route, for the direction the Stops tab is showing.
+   * Selecting a route puts its calls on the map — an operator editing a stop
+   * list needs to see where those stops actually are.
+   */
+  const selectedStops: StopSearchResult[] = useMemo(() => {
+    if (!editorDetail) return [];
+    const rows = editorDetail.stopsByDirection[editorDirectionId] ?? [];
+    return rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      lat: r.lat,
+      lon: r.lon,
+    }));
+  }, [editorDetail, editorDirectionId]);
+
+  // Fly to a stop the operator clicked in the Stops tab.
+  useEffect(() => {
+    if (!focusedStop) return;
+    mapRef.current?.getMap().flyTo({
+      center: [focusedStop.lon, focusedStop.lat],
+      zoom: 16,
+      duration: 700,
+    });
+  }, [focusedStop]);
 
   const previewSentence = useMemo(() => {
     if (
@@ -1088,7 +1116,16 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
               id="hover-stops"
               stops={hoverStops}
               variant="route"
-              visible={Boolean(effectiveHover && hoverStops.length)}
+              visible={Boolean(
+                effectiveHover && hoverStops.length && !selectedRouteId,
+              )}
+              onLine
+            />
+            <StopMarkersLayer
+              id="selected-route-stops"
+              stops={selectedStops}
+              variant="route"
+              visible={selectedStops.length > 0}
               onLine
             />
           </MapGl>

@@ -41,6 +41,7 @@ export function RouteStopsTab({ detail, onChanged }: RouteStopsTabProps) {
   const directionId = useRouteEditorStore((s) => s.directionId);
   const setDirectionId = useRouteEditorStore((s) => s.setDirectionId);
   const setFeedback = useRouteEditorStore((s) => s.setFeedback);
+  const focusStop = useRouteEditorStore((s) => s.focusStop);
   const [isPending, startTransition] = useTransition();
 
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -289,6 +290,9 @@ export function RouteStopsTab({ detail, onChanged }: RouteStopsTabProps) {
                 onCommitEdit={() => submitRename(stop)}
                 onCancelEdit={() => setEditingId(null)}
                 onDelete={() => submitDelete(stop)}
+                onFocusOnMap={() =>
+                  focusStop({ id: stop.id, lat: stop.lat, lon: stop.lon })
+                }
               />
             ))}
             {stops.length === 0 && (

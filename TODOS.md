@@ -39,9 +39,9 @@ Tabs: Details | Stops | Trips | Service. Costs/Coverage dropped, Shapes deferred
       rewriters that append operator rows. MUST land before T1.
 - [x] T1: tab shell + Details (5a) + create/duplicate/delete route
 - [x] T2: Stops tab — ordered list, rename (5c-rename), create/delete stop
-- [ ] T3: Trips tab (+ editable block_id, needs TripOverride) + Service tab.
-      Moving the closure form out of network-map.tsx is the first task — it is
-      why that file's cognitive complexity is 51 against a limit of 15.
+- [x] T3: Trips tab (editable block_id via TripOverride) + Service tab.
+      network-map.tsx is 1171 -> 731 lines and complexity 51 -> 17. Both it and
+      route-service-tab sit at 17 against the limit of 15 — worth a second pass.
 - [ ] Route "+ Add route" entry point: createRoute action exists and is tested
       by duplicate, but nothing in the UI calls it yet
 - [ ] T3b: cascade switch — affected-route count (distinct, max 26 at Torhayloch)

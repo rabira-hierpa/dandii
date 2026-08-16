@@ -429,3 +429,90 @@ action, never the default.
 serving that segment" as a P2. This is that feature, arrived at from the stop
 side rather than the segment side — stops are what operators actually name, and
 they are what the closure model already keys on.
+
+---
+
+# 5c-shape — drawing a route on the map, snapped to OSM roads
+
+Requested 2026-08-15. The design doc had this as "the hardest phase, do last, a
+genuine mini-CAD tool". That was written before the OSM street layer went into
+the OTP graph, and it is now wrong: the expensive part already exists.
+
+## The primitive we already have
+
+`lib/directions.ts:snapLegToStreets` asks OTP to plan between two points and
+returns the decoded polyline. It was built to stop walk legs rendering as
+straight lines through buildings. The same call, with a different mode, is
+exactly "snap this segment to the road network".
+
+Measured against the live graph, Meskel Square → Yeka Michael:
+
+| Mode | Distance | Points |
+|---|---|---|
+| WALK | 5,488 m | 210 |
+| CAR | 4,758 m | 133 |
+| BICYCLE | 4,801 m | 146 |
+
+**Use CAR, not WALK.** WALK routes over footbridges, stairs and alleys a
+minibus cannot drive. The existing helper hardcodes WALK because it was snapping
+a rider's walk to the stop; the shape editor needs the drivable network or it
+will happily draw a bus through a pedestrian square.
+
+## Interaction
+
+Right-click a route line on the console map, choose **Edit shape**, and the map
+enters draw mode for the direction the Stops tab is showing.
+
+- The current shape stays visible, dimmed, as a reference to trace or replace.
+- Each left-click drops a waypoint. Between consecutive waypoints the segment is
+  snapped to roads and drawn immediately, so the operator sees the real line as
+  they go rather than at the end.
+- Right-click a waypoint removes it and re-snaps its two neighbours into one.
+- Escape or **Cancel** leaves without saving; **Save** writes the override.
+
+Waypoints, not vertices. An operator thinks "it goes via Bole Road", not "move
+this vertex 12 m north" — and a snapped segment can carry 130 points that nobody
+wants to drag individually.
+
+## Storage
+
+```prisma
+model ShapeOverride {
+  routeId     String
+  directionId Int
+  /// Operator-placed waypoints, in order. The editable representation.
+  waypoints   Json
+  /// The snapped LineString. Stored so rendering never depends on OTP being up.
+  geojson     Json
+  editedById  String
+  editedAt    DateTime @updatedAt
+  @@id([routeId, directionId])
+}
+```
+
+Both are stored deliberately. Waypoints alone would mean re-snapping (and so a
+live OTP) on every read, and would let a graph rebuild silently change a shape
+an operator had approved. Geometry alone would make the drawing un-editable —
+reopening the editor would offer 130 vertices instead of the 6 decisions behind
+them.
+
+Same no-FK rule as every other override: the seed deletes and reloads shapes.
+
+## Failure handling
+
+OTP will sometimes fail to route between two waypoints — a gap in the OSM data,
+a waypoint dropped in a field. The segment falls back to a straight line and is
+drawn dashed with the reason named. Silently substituting a straight line would
+put an invisible lie in the geometry; refusing the waypoint would block an
+operator who knows the road exists and that OSM is wrong.
+
+## Slices
+
+| | Scope |
+|---|---|
+| S1 | `/api/console/snap` (CAR-mode segment snapping) + ShapeOverride + save action |
+| S2 | right-click menu + draw mode on the console map |
+| S3 | apply-overrides replay + shapes.txt regeneration in the export |
+
+S1 is independently verifiable against the live graph, which is why it goes
+first.

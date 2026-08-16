@@ -147,7 +147,7 @@ interface PublicMapProps {
   account: AccountData | null;
 }
 
-export function PublicMap({ user, account }: PublicMapProps) {
+export function PublicMap({ user, account }: Readonly<PublicMapProps>) {
   const router = useRouter();
   const mapRef = useRef<MapRef>(null);
   const tMap = useTranslations("map");
@@ -168,7 +168,7 @@ export function PublicMap({ user, account }: PublicMapProps) {
 
   // Recent searches (localStorage) shown in the sidebar — reactive via an
   // external store, so recordSearch/clear below update it with no effect.
-  const recents = useRecentSearches();
+  const recentSearches = useRecentSearches();
 
   // Desktop sidebar collapse (Google-Maps chevron). Desktop-only; the mobile
   // bottom sheet has its own snap points.
@@ -855,6 +855,7 @@ export function PublicMap({ user, account }: PublicMapProps) {
                   return (
                     <button
                       key={code}
+                      type="button"
                       onClick={() => toggleOperatorFilter(code)}
                       aria-pressed={active}
                       className={cx(
@@ -889,7 +890,7 @@ export function PublicMap({ user, account }: PublicMapProps) {
                 <LibraryPanel
                   section={librarySection}
                   account={account}
-                  recents={recents}
+                  recents={recentSearches}
                   onSelectRoute={(routeId) => selectRoute(routeId)}
                   onSelectRecent={(q) => setQuery(q)}
                   signedIn={Boolean(user)}
@@ -1333,6 +1334,7 @@ export function PublicMap({ user, account }: PublicMapProps) {
         >
           <div className="flex items-center gap-1 border-b border-[#EEF1EA] px-3 py-2">
             <button
+              type="button"
               onClick={clearSelection}
               aria-label="Back"
               className="flex cursor-pointer items-center gap-1.5 rounded-full px-2 py-1 text-[13px] font-semibold text-[#1A73E8] hover:bg-[#F1F3F4]"

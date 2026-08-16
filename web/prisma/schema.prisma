@@ -46,6 +46,7 @@ model User {
   routeOverrides   RouteOverride[]
   stopOrderEdits   RouteStopOrderOverride[]
   tripEdits        TripOverride[]
+  shapeEdits       ShapeOverride[]
 
   @@unique([email])
   @@map("user")
@@ -388,6 +389,34 @@ model StopOverride {
 
 /// A route-level correction: display names, map colors, and operator
 /// reassignment (which drives the per-operator `agency_id` in the export).
+/**
+ * An operator-drawn route shape for one direction.
+ *
+ * `waypoints` is what the operator placed and what the editor reopens with;
+ * `geojson` is the road-snapped line built from them. Both are stored on
+ * purpose. Waypoints alone would mean re-snapping on every read — a live OTP
+ * dependency for rendering, and a graph rebuild could silently redraw a shape
+ * someone had already approved. Geometry alone would make the drawing
+ * un-editable: reopening would offer ~130 snapped vertices instead of the
+ * handful of decisions behind them.
+ *
+ * Same no-FK rule as [StopOverride]: the seed deletes and reloads every shape.
+ */
+model ShapeOverride {
+  routeId     String
+  directionId Int
+  /// [{ lat, lon }] in order, as placed by the operator.
+  waypoints   Json
+  /// The snapped LineString actually drawn and exported.
+  geojson     Json
+  editedById  String
+  editedBy    User     @relation(fields: [editedById], references: [id])
+  editedAt    DateTime @updatedAt
+
+  @@id([routeId, directionId])
+  @@map("shape_override")
+}
+
 /**
  * Per-trip corrections.
  *

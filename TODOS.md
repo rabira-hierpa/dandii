@@ -47,7 +47,13 @@ Tabs: Details | Stops | Trips | Service. Costs/Coverage dropped, Shapes deferred
 - [ ] T3b: cascade switch — affected-route count (distinct, max 26 at Torhayloch)
       + grouped closures sharing a cascadeId, reopened together
 - [ ] T4: stop reordering (5b — TripStopOverride + stop_times regen)
-- [ ] T5: Shapes tab — Edit/Trim/Snap (5c-shape)
+Shape drawing (5c-shape, docs/route-editor-design.md). Snapping reuses the OTP
+graph in CAR mode — verified 6,067m road-following vs 4,138m straight-line.
+- [x] S1: /api/console/snap + ShapeOverride + saveRouteShape (server-side re-snap)
+- [ ] S2: right-click a route -> "Edit shape" -> draw mode with live snapped
+      preview, waypoint add/remove, dashed rendering for unsnapped segments
+- [ ] S3: apply-overrides replays ShapeOverride; export regenerates shapes.txt
+- [ ] T5: Shapes tab — Edit/Trim/Snap list (5c-shape UI entry point)
 - [x] Restore corrupted punctuation in network-map.tsx
 
 Shape collapse folded into T0: store both directions in a `Shape` model; public

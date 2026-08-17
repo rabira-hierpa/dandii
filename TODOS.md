@@ -84,9 +84,10 @@ graph in CAR mode — verified 6,067m road-following vs 4,138m straight-line.
 - [x] Restore corrupted punctuation in network-map.tsx
 
 Deferred from the S2 QA pass (2026-08-17):
-- [ ] P2 — Component test infrastructure (@testing-library/react + jsdom). The
-      "detail fetch failed → blank panel" bug is a render-branch bug with no way
-      to test it; the repo has unit tests only.
+- [x] P2 — Component test infrastructure (@testing-library/react + jsdom).
+      Per-file opt-in via `// @vitest-environment jsdom`, so the suite stays on
+      node. First test covers the "detail fetch failed → blank panel" bug;
+      verified it fails when the fix is reverted.
 
 Deferred from the S2 autoplan (2026-08-16):
 - [ ] P2 — Playwright E2E: draw -> save -> export contains the drawn shapes.txt.

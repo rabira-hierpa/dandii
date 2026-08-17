@@ -1,9 +1,9 @@
 "use server";
 
-import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { createRouteRow } from "@/lib/route-create";
 import { requirePermission } from "@/lib/session";
 
 const routeFieldsSchema = z.object({
@@ -39,37 +39,20 @@ export async function createRoute(input: z.infer<typeof routeFieldsSchema>) {
   const session = await requirePermission({ route: ["create"] });
   const data = routeFieldsSchema.parse(input);
 
-  const agency = await prisma.agency.findFirst({ select: { id: true } });
-  if (!agency) return { ok: false as const, error: "No agency configured" };
-
-  const route = await prisma.route.create({
-    data: {
-      id: `manual-${randomUUID()}`,
-      shortName: data.shortName,
-      longName: data.longName,
-      type: data.type,
-      lengthMeters: data.lengthKm != null ? data.lengthKm * 1000 : null,
-      agencyId: agency.id,
-      // `origin` defaults to FEED, and the exporter only picks up created routes
-      // with `origin: OPERATOR` (gtfs-export.ts). Without this a route added
-      // here showed on the map and in the console, then vanished on publish —
-      // the operator had no way to see that the feed never carried it.
-      origin: "OPERATOR",
-      ...(data.operatorId
-        ? {
-            assignment: {
-              create: {
-                operatorId: data.operatorId,
-                assignedById: session.user.id,
-              },
-            },
-          }
-        : {}),
-    },
+  // Shared with the network-map editor's createRoute. The permissions differ by
+  // design; the row invariants must not (see lib/route-create.ts).
+  const created = await createRouteRow({
+    shortName: data.shortName,
+    longName: data.longName,
+    type: data.type,
+    lengthMeters: data.lengthKm != null ? data.lengthKm * 1000 : null,
+    operatorId: data.operatorId,
+    assignedById: session.user.id,
   });
+  if (!created.ok) return { ok: false as const, error: created.error };
 
   revalidateConsole();
-  return { ok: true as const, routeId: route.id };
+  return { ok: true as const, routeId: created.routeId };
 }
 
 export async function updateRoute(input: z.infer<typeof updateRouteSchema>) {

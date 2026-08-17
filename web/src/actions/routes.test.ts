@@ -83,3 +83,43 @@ describe("createRoute", () => {
     expect(prisma.route.create).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * Both entry points share one creation core.
+ *
+ * The permissions differ by design (`route:create` here, `feedEdit:edit` in the
+ * network-map editor) and the callers differ, but the row they write must not.
+ * They drifted once: only one set `origin`, and routes created through this door
+ * were silently absent from every published feed.
+ */
+describe("shared creation invariants", () => {
+  it("gives the route an op: id that cannot collide with a feed id", async () => {
+    // Was `manual-…` here and `op:…` in the other action. The feed uses bare
+    // numerics for routes, so one prefix is enough and two is a divergence
+    // waiting to matter.
+    await createRoute(input);
+
+    expect(prisma.route.create.mock.calls[0][0].data.id).toMatch(/^op:/);
+  });
+
+  it("always attaches a real agency", async () => {
+    await createRoute(input);
+
+    expect(prisma.route.create.mock.calls[0][0].data.agencyId).toBe("AA");
+  });
+
+  it("records who made the assignment when an operator is picked", async () => {
+    await createRoute({ ...input, operatorId: "op-1" });
+
+    const created = prisma.route.create.mock.calls[0][0];
+    expect(created.data.assignment).toEqual({
+      create: { operatorId: "op-1", assignedById: "user-1" },
+    });
+  });
+
+  it("omits the assignment entirely when no operator was picked", async () => {
+    await createRoute(input);
+
+    expect(prisma.route.create.mock.calls[0][0].data.assignment).toBeUndefined();
+  });
+});

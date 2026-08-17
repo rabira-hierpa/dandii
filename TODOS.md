@@ -55,11 +55,12 @@ Tabs: Details | Stops | Trips | Service. Costs/Coverage dropped, Shapes deferred
       `origin: OPERATOR`, so a route added in the console showed on the map and
       then vanished on publish. Fixed + regression test; one live route (A25)
       repaired in the dev DB.
-- [ ] **DRY: two createRoute actions.** `actions/routes.ts` (perm `route:create`,
-      id `manual-…`) and `actions/route-edit.ts` (perm `feedEdit:edit`, id
-      `op:…`) both create routes with different id schemes and permissions.
-      Consolidate on one, or document why two exist. The origin bug above came
-      straight out of this split.
+- [x] **DRY: two createRoute actions.** Both now go through `createRouteRow` in
+      `lib/route-create.ts`. The two entry points stay — their permissions and
+      callers genuinely differ, and permissions.ts documents why — but id
+      generation, agency lookup, `origin: OPERATOR` and assignment live in one
+      place. Ids are `op:` from both doors now (`manual-` was only ever mentioned
+      in a comment, never branched on).
 - [ ] T3b: cascade switch — affected-route count (distinct, max 26 at Torhayloch)
       + grouped closures sharing a cascadeId, reopened together
 - [x] T4: stop reordering (5b). `reorderRouteStops` + `RouteStopOrderOverride` +

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { ZodError } from "zod";
 import { prisma } from "@/lib/prisma";
+import { createRouteRow, operatorId } from "@/lib/route-create";
 import { requirePermission } from "@/lib/session";
 import {
   routeCreateSchema,
@@ -24,15 +25,6 @@ function zodError(err: unknown, fallback: string): { ok: false; error: string } 
     return { ok: false, error: err.issues[0]?.message ?? fallback };
   }
   throw err;
-}
-
-/**
- * Ids for operator-authored entities. The feed uses `node/…` / `way/…` for
- * stops and bare numerics for routes, so an `op:` prefix cannot collide with
- * anything DT4A ships — including a future revision that reuses ids.
- */
-function operatorId(): string {
-  return `op:${crypto.randomUUID()}`;
 }
 
 /**
@@ -127,32 +119,30 @@ export async function createRoute(input: RouteCreateInput) {
   });
   if (!operator) return { ok: false as const, error: "Unknown operator" };
 
-  // agency_id has to name a real agency or the exported feed fails validation.
-  const agency = await prisma.agency.findFirst({ select: { id: true } });
-  if (!agency) return { ok: false as const, error: "No agency to attach to" };
-
-  const id = operatorId();
-  await prisma.route.create({
-    data: {
-      id,
-      shortName: data.shortName,
-      longName: data.longName,
-      type: data.type,
-      color: data.color ?? null,
-      textColor: data.textColor ?? null,
-      agencyId: agency.id,
-      origin: "OPERATOR",
-      assignment: { create: { operatorId: operator.id } },
-    },
+  // Shared with the console routes table's createRoute. The permissions differ
+  // by design; the row invariants must not (see lib/route-create.ts).
+  const created = await createRouteRow({
+    shortName: data.shortName,
+    longName: data.longName,
+    type: data.type,
+    color: data.color ?? null,
+    textColor: data.textColor ?? null,
+    operatorId: operator.id,
   });
+  if (!created.ok) return { ok: false as const, error: created.error };
+
   if (data.desc) {
     await prisma.routeOverride.create({
-      data: { routeId: id, desc: data.desc, editedById: session.user.id },
+      data: {
+        routeId: created.routeId,
+        desc: data.desc,
+        editedById: session.user.id,
+      },
     });
   }
 
   revalidateConsole();
-  return { ok: true as const, data: { routeId: id } };
+  return { ok: true as const, data: { routeId: created.routeId } };
 }
 
 /**

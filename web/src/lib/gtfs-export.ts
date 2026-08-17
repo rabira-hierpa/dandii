@@ -13,6 +13,7 @@ import {
 import {
   applyRouteOverridesToCsv,
   applyStopOverridesToCsv,
+  applyShapeOverridesToCsv,
   applyStopTimeOrderToCsv,
   applyTripOverridesToCsv,
 } from "@/lib/gtfs-overrides";
@@ -74,8 +75,15 @@ const REPLACED = new Set([
  * ids. All empty in the common case, and then the tables copy verbatim.
  */
 async function loadFeedOverrides(): Promise<FeedOverrides> {
-  const [stopRows, routeRows, createdStops, createdRoutes, tripRows, orderRows] =
-    await Promise.all([
+  const [
+    stopRows,
+    routeRows,
+    createdStops,
+    createdRoutes,
+    tripRows,
+    orderRows,
+    shapeRows,
+  ] = await Promise.all([
     prisma.stopOverride.findMany({
       select: { stopId: true, name: true, deletedAt: true },
     }),
@@ -116,7 +124,39 @@ async function loadFeedOverrides(): Promise<FeedOverrides> {
     prisma.routeStopOrderOverride.findMany({
       select: { routeId: true, directionId: true, stopIds: true },
     }),
+    prisma.shapeOverride.findMany({
+      select: { routeId: true, directionId: true, geojson: true },
+    }),
   ]);
+
+  // Drawn geometry is keyed by (route, direction) but shapes.txt is keyed by
+  // shape_id, so fan it out across the shapes those trips point at.
+  const drawnShapes = new Map<string, [number, number][]>();
+  if (shapeRows.length > 0) {
+    const drawnTrips = await prisma.trip.findMany({
+      where: {
+        OR: shapeRows.map((s) => ({
+          routeId: s.routeId,
+          directionId: s.directionId,
+        })),
+        shapeId: { not: null },
+      },
+      select: { shapeId: true, routeId: true, directionId: true },
+    });
+    const byKey = new Map(
+      shapeRows.map((s) => [
+        `${s.routeId}:${s.directionId}`,
+        ((s.geojson as { coordinates?: number[][] } | null)?.coordinates ??
+          []) as [number, number][],
+      ]),
+    );
+    for (const trip of drawnTrips) {
+      const coords = byKey.get(`${trip.routeId}:${trip.directionId}`);
+      if (coords && coords.length >= 2) {
+        drawnShapes.set(trip.shapeId as string, coords);
+      }
+    }
+  }
 
   // The override is keyed by (route, direction) but stop_times.txt is keyed by
   // trip, so fan it out across the trips that direction actually runs.
@@ -144,6 +184,7 @@ async function loadFeedOverrides(): Promise<FeedOverrides> {
     createdStops,
     tripFields: tripRows,
     stopTimeOrders,
+    drawnShapes,
     // A created route can also carry an override row (renamed after creation),
     // so desc/url come from there when present.
     createdRoutes: createdRoutes.map((r) => ({
@@ -204,6 +245,9 @@ async function buildZip(
     );
     edited.set("stop_times.txt", (base) =>
       applyStopTimeOrderToCsv(base, overrides.stopTimeOrders),
+    );
+    edited.set("shapes.txt", (base) =>
+      applyShapeOverridesToCsv(base, overrides.drawnShapes),
     );
   }
 

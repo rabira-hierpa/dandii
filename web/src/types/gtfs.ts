@@ -71,6 +71,12 @@ export interface FeedOverrides {
    * change places, so stop_times.txt is rebuilt per affected trip.
    */
   stopTimeOrders: Map<string, string[]>;
+  /**
+   * Operator-drawn geometry, keyed by shape_id. Replaces the shape's block in
+   * shapes.txt outright — a redrawn line is not a correction to the old
+   * vertices, it is their replacement.
+   */
+  drawnShapes: Map<string, [number, number][]>;
   /** Tombstoned ids — omitted from the export entirely. */
   deletedStopIds: string[];
   deletedRouteIds: string[];
@@ -83,6 +89,7 @@ export const EMPTY_FEED_OVERRIDES: FeedOverrides = {
   createdRoutes: [],
   tripFields: [],
   stopTimeOrders: new Map(),
+  drawnShapes: new Map(),
   deletedStopIds: [],
   deletedRouteIds: [],
 };
@@ -95,6 +102,7 @@ export function hasNoOverrides(o: FeedOverrides): boolean {
     o.createdStops.length === 0 &&
     o.createdRoutes.length === 0 &&
     o.stopTimeOrders.size === 0 &&
+    o.drawnShapes.size === 0 &&
     o.tripFields.length === 0 &&
     o.deletedStopIds.length === 0 &&
     o.deletedRouteIds.length === 0

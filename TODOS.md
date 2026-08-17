@@ -66,7 +66,10 @@ graph in CAR mode — verified 6,067m road-following vs 4,138m straight-line.
       timeout, a concurrency cap of 6, and a per-operator snap throttle.
       54 new tests. network-map.tsx is finally under the complexity limit
       (17 -> 21 -> under) after extracting route-tab-body and use-route-hover.
-- [ ] S3: apply-overrides replays ShapeOverride; export regenerates shapes.txt
+- [x] S3: apply-overrides replays ShapeOverride (a reseed no longer silently
+      replaces every drawn line with DT4A's original) and the export regenerates
+      shapes.txt. Stored geojson is written back verbatim rather than re-snapped,
+      so an OTP graph rebuild can't quietly redraw geometry a human approved.
 - [x] Restore corrupted punctuation in network-map.tsx
 
 Deferred from the S2 QA pass (2026-08-17):

@@ -103,7 +103,7 @@ export function ShapeContextMenu({
         type="button"
         role="menuitem"
         onClick={onEditShape}
-        className="w-full cursor-pointer px-3 py-2 text-left text-[12.5px] font-medium text-[#1C2321] hover:bg-[#F3F8F1] focus:bg-[#F3F8F1] focus:outline-none"
+        className="w-full cursor-pointer px-3 py-2 text-left text-[12.5px] font-medium text-[#1C2321] hover:bg-[#F3F8F1] focus-visible:bg-[#F3F8F1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#1A73E8]"
       >
         Edit shape
       </button>
@@ -115,7 +115,7 @@ export function ShapeContextMenu({
         title={
           canReset ? undefined : "This direction still has the feed's own shape"
         }
-        className="w-full cursor-pointer px-3 py-2 text-left text-[12.5px] font-medium text-[#1C2321] hover:bg-[#F3F8F1] focus:bg-[#F3F8F1] focus:outline-none disabled:cursor-not-allowed disabled:text-[#BDC1C6] disabled:hover:bg-transparent"
+        className="w-full cursor-pointer px-3 py-2 text-left text-[12.5px] font-medium text-[#1C2321] hover:bg-[#F3F8F1] focus-visible:bg-[#F3F8F1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#1A73E8] disabled:cursor-not-allowed disabled:text-[#BDC1C6] disabled:hover:bg-transparent"
       >
         Reset to feed shape
       </button>

@@ -2,6 +2,28 @@
 
 All notable changes to Dandii are documented in this file.
 
+## [1.3.0] — 2026-08-17
+
+### Added
+
+- **Close part of a route, not all of it.** A road blocked between two stops used to mean closing the whole line, which told riders a dozen working stops were unavailable. Closures now carry a stop range and a kind: **severed** (the route is cut, each side still runs) or **skipped** (vehicles pass through without stopping). The map draws the closed stretch separately from the open ones, and the planner routes riders around the closed span instead of refusing the journey.
+- **A route editor in the console.** Selecting a route opens tabs for **Details**, **Stops**, **Trips**, **Shapes**, and **Service**. Operators can correct a route's name, colour, type, operator, and flag-stop settings; rename stops (the feed ships 45 variants of "Megenagna"); create, delete, and drag-reorder stops; set GTFS `block_id` so a rider staying aboard between two runs isn't told to change vehicles; and create, duplicate, or delete whole routes.
+- **Draw a route on the map, snapped to real roads.** Right-click a line or open the Shapes tab, then click to place waypoints — each segment snaps to the drivable road network as you go. Snapping asks the routing graph for a **car** path, not a walking one, so a minibus is never drawn through a footbridge or a pedestrian square. A stretch the road data can't route is drawn dashed and counted, rather than quietly replaced with a straight line. **Reset to feed shape** puts the original geometry back.
+- **Operator edits reach the published feed.** The exported GTFS zip now rewrites `stops.txt`, `routes.txt`, `trips.txt`, and `stop_times.txt` from the base feed plus operator corrections — including rows for stops and routes created in the console, and omitting ones deleted there. Fields the DT4A feed has no column for (`route_url`, `continuous_pickup`, `block_id`) widen the header instead of vanishing on publish.
+
+### Changed
+
+- **Edits survive a reseed.** Every correction is stored as an override beside the feed row rather than written over it, so reloading the vendored feed replays the edit instead of losing it. Deleting a feed route or stop leaves a tombstone; entities created in the console are marked as operator-authored and kept.
+- **The console map shows both directions.** Operators edit each direction separately, so outbound and inbound are now distinct lines. Selecting a route puts its stops on the map, and clicking a stop in the list flies to it.
+- **Reordering keeps the timetable honest.** Times stay with the position, not the stop — a run reaches its fifth call at the same time whichever stop that is. Carrying each stop's old time along would emit a timetable that runs backwards mid-trip.
+
+### Fixed
+
+- **Partial closures now follow the real route line.** The closed stretch was sliced from the simplified geometry, which put the break in the wrong place on curved corridors.
+- **The route form no longer shows the previous route's values.** Selecting a different route remounts the editor, so every field reflects the route actually open — not just the visible ones.
+- **A colour change shows up immediately** on the map instead of waiting for the next publish.
+- **Drag-to-reorder stops** works against trips rather than colliding on the `(trip, sequence)` key.
+
 ## [1.2.0] — 2026-08-05
 
 ### Added

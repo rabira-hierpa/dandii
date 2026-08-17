@@ -194,6 +194,79 @@ export function applyRouteOverridesToCsv(
 }
 
 /**
+ * `stop_times.txt` with operator-reordered calls rewritten.
+ *
+ * Unlike the other tables this is not a patch-by-id: nothing about an individual
+ * row changes, the rows change *places*. Each affected trip's block is re-emitted
+ * in the operator's order and renumbered 1..n.
+ *
+ * **Times stay with the position, not the stop** — the same contract
+ * `reorderRouteStops` applies in the database. A run reaches its fifth call at
+ * 06:20 whichever stop that is; carrying each stop's old time along with it
+ * would emit a timetable that goes backwards in the middle, which is invalid
+ * GTFS and breaks every arrival estimate downstream.
+ *
+ * A trip whose rows don't match the ordered set is left exactly as it was. The
+ * override could be stale against a re-vendored feed, and shipping a feed with
+ * dropped or invented calls is far worse than shipping the original order.
+ */
+export function applyStopTimeOrderToCsv(
+  content: string,
+  ordersByTrip: Map<string, string[]>,
+): string {
+  if (ordersByTrip.size === 0) return content;
+
+  const parsed = Papa.parse<Row>(content.trim(), {
+    header: true,
+    skipEmptyLines: true,
+  });
+  const rows = parsed.data;
+  if (rows.length === 0) return content;
+  if (!Object.hasOwn(rows[0], "trip_id") || !Object.hasOwn(rows[0], "stop_id")) {
+    return content;
+  }
+
+  // Group by trip while preserving first-appearance order, so untouched trips
+  // come back out exactly where they went in.
+  const blocks = new Map<string, Row[]>();
+  for (const row of rows) {
+    const block = blocks.get(row.trip_id);
+    if (block) block.push(row);
+    else blocks.set(row.trip_id, [row]);
+  }
+
+  for (const [tripId, block] of blocks) {
+    const order = ordersByTrip.get(tripId);
+    if (!order) continue;
+
+    const byStop = new Map(block.map((r) => [r.stop_id, r]));
+    const samePattern =
+      byStop.size === block.length &&
+      order.length === block.length &&
+      order.every((id) => byStop.has(id));
+    if (!samePattern) continue;
+
+    const inSequence = [...block].sort(
+      (a, b) => Number(a.stop_sequence) - Number(b.stop_sequence),
+    );
+    blocks.set(
+      tripId,
+      order.map((stopId, i) => ({
+        ...(byStop.get(stopId) as Row),
+        arrival_time: inSequence[i].arrival_time,
+        departure_time: inSequence[i].departure_time,
+        stop_sequence: String(i + 1),
+      })),
+    );
+  }
+
+  const columns = parsed.meta.fields ?? Object.keys(rows[0]);
+  return (
+    Papa.unparse([...blocks.values()].flat(), { columns, newline: "\n" }) + "\n"
+  );
+}
+
+/**
  * `trips.txt` with per-trip corrections patched in.
  *
  * The DT4A feed has no `block_id` column, so emitting one always widens the

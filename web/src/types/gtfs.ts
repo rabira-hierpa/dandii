@@ -66,6 +66,11 @@ export interface FeedOverrides {
   createdStops: CreatedStop[];
   createdRoutes: CreatedRoute[];
   tripFields: TripFieldOverride[];
+  /**
+   * Operator-reordered calls, keyed by trip_id. Not a field patch — the rows
+   * change places, so stop_times.txt is rebuilt per affected trip.
+   */
+  stopTimeOrders: Map<string, string[]>;
   /** Tombstoned ids — omitted from the export entirely. */
   deletedStopIds: string[];
   deletedRouteIds: string[];
@@ -77,6 +82,7 @@ export const EMPTY_FEED_OVERRIDES: FeedOverrides = {
   createdStops: [],
   createdRoutes: [],
   tripFields: [],
+  stopTimeOrders: new Map(),
   deletedStopIds: [],
   deletedRouteIds: [],
 };
@@ -88,6 +94,7 @@ export function hasNoOverrides(o: FeedOverrides): boolean {
     o.routeFields.length === 0 &&
     o.createdStops.length === 0 &&
     o.createdRoutes.length === 0 &&
+    o.stopTimeOrders.size === 0 &&
     o.tripFields.length === 0 &&
     o.deletedStopIds.length === 0 &&
     o.deletedRouteIds.length === 0

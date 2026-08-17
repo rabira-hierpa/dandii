@@ -13,6 +13,7 @@ import {
 import {
   applyRouteOverridesToCsv,
   applyStopOverridesToCsv,
+  applyStopTimeOrderToCsv,
   applyTripOverridesToCsv,
 } from "@/lib/gtfs-overrides";
 import { hasNoOverrides, type FeedOverrides } from "@/types/gtfs";
@@ -73,7 +74,7 @@ const REPLACED = new Set([
  * ids. All empty in the common case, and then the tables copy verbatim.
  */
 async function loadFeedOverrides(): Promise<FeedOverrides> {
-  const [stopRows, routeRows, createdStops, createdRoutes, tripRows] =
+  const [stopRows, routeRows, createdStops, createdRoutes, tripRows, orderRows] =
     await Promise.all([
     prisma.stopOverride.findMany({
       select: { stopId: true, name: true, deletedAt: true },
@@ -112,7 +113,27 @@ async function loadFeedOverrides(): Promise<FeedOverrides> {
     prisma.tripOverride.findMany({
       select: { tripId: true, blockId: true, headsign: true },
     }),
+    prisma.routeStopOrderOverride.findMany({
+      select: { routeId: true, directionId: true, stopIds: true },
+    }),
   ]);
+
+  // The override is keyed by (route, direction) but stop_times.txt is keyed by
+  // trip, so fan it out across the trips that direction actually runs.
+  const stopTimeOrders = new Map<string, string[]>();
+  if (orderRows.length > 0) {
+    const trips = await prisma.trip.findMany({
+      where: { OR: orderRows.map((o) => ({ routeId: o.routeId, directionId: o.directionId })) },
+      select: { id: true, routeId: true, directionId: true },
+    });
+    const orderByKey = new Map(
+      orderRows.map((o) => [`${o.routeId}:${o.directionId}`, o.stopIds as string[]]),
+    );
+    for (const trip of trips) {
+      const order = orderByKey.get(`${trip.routeId}:${trip.directionId}`);
+      if (order) stopTimeOrders.set(trip.id, order);
+    }
+  }
 
   const routeOverrideById = new Map(routeRows.map((r) => [r.routeId, r]));
   return {
@@ -122,6 +143,7 @@ async function loadFeedOverrides(): Promise<FeedOverrides> {
     routeFields: routeRows.filter((r) => r.deletedAt === null),
     createdStops,
     tripFields: tripRows,
+    stopTimeOrders,
     // A created route can also carry an override row (renamed after creation),
     // so desc/url come from there when present.
     createdRoutes: createdRoutes.map((r) => ({
@@ -179,6 +201,9 @@ async function buildZip(
     );
     edited.set("trips.txt", (base) =>
       applyTripOverridesToCsv(base, overrides.tripFields),
+    );
+    edited.set("stop_times.txt", (base) =>
+      applyStopTimeOrderToCsv(base, overrides.stopTimeOrders),
     );
   }
 

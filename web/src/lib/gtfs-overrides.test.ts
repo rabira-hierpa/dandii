@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyRouteOverridesToCsv,
   applyStopOverridesToCsv,
+  applyStopTimeOrderToCsv,
   applyTripOverridesToCsv,
 } from "./gtfs-overrides";
 
@@ -284,3 +285,127 @@ describe("applyTripOverridesToCsv", () => {
   });
 });
 
+
+/** Column order mirrors data/gtfs-2026/combined/stop_times.txt exactly. */
+const STOP_TIMES_CSV = `trip_id,arrival_time,departure_time,stop_id,stop_sequence,stop_headsign,pickup_type,drop_off_type,shape_dist_traveled,timepoint,continuous_pickup,continuous_drop_off
+t1,06:00:00,06:00:00,a,1,,,,,1,,
+t1,06:10:00,06:10:00,b,2,,,,,0,,
+t1,06:20:00,06:20:00,c,3,,,,,0,,
+t2,07:00:00,07:00:00,x,1,,,,,1,,
+t2,07:30:00,07:30:00,y,2,,,,,0,,
+`;
+
+/** trip_id, stop_id, arrival, stop_sequence for each data row, in file order. */
+const calls = (csv: string) =>
+  csv
+    .trim()
+    .split("\n")
+    .slice(1)
+    .map((line) => {
+      const c = line.split(",");
+      return { trip: c[0], arrival: c[1], stop: c[3], seq: c[4] };
+    });
+
+describe("applyStopTimeOrderToCsv", () => {
+  it("returns the feed untouched when nothing was reordered", () => {
+    expect(applyStopTimeOrderToCsv(STOP_TIMES_CSV, new Map())).toBe(
+      STOP_TIMES_CSV,
+    );
+  });
+
+  it("re-emits an affected trip in the operator's order", () => {
+    const out = applyStopTimeOrderToCsv(
+      STOP_TIMES_CSV,
+      new Map([["t1", ["c", "b", "a"]]]),
+    );
+
+    const t1 = calls(out).filter((r) => r.trip === "t1");
+    expect(t1.map((r) => r.stop)).toEqual(["c", "b", "a"]);
+  });
+
+  it("keeps times with the position, not the stop", () => {
+    // The same contract reorderRouteStops applies in the database: a run
+    // reaches its third call at 06:20 whichever stop that is. Carrying each
+    // stop's old time along would emit a timetable that goes backwards.
+    const out = applyStopTimeOrderToCsv(
+      STOP_TIMES_CSV,
+      new Map([["t1", ["c", "b", "a"]]]),
+    );
+
+    const t1 = calls(out).filter((r) => r.trip === "t1");
+    expect(t1.map((r) => r.arrival)).toEqual([
+      "06:00:00",
+      "06:10:00",
+      "06:20:00",
+    ]);
+  });
+
+  it("renumbers stop_sequence from 1", () => {
+    const out = applyStopTimeOrderToCsv(
+      STOP_TIMES_CSV,
+      new Map([["t1", ["b", "c", "a"]]]),
+    );
+
+    const t1 = calls(out).filter((r) => r.trip === "t1");
+    expect(t1.map((r) => r.seq)).toEqual(["1", "2", "3"]);
+  });
+
+  it("leaves other trips exactly as they were", () => {
+    const out = applyStopTimeOrderToCsv(
+      STOP_TIMES_CSV,
+      new Map([["t1", ["c", "b", "a"]]]),
+    );
+
+    const t2 = calls(out).filter((r) => r.trip === "t2");
+    expect(t2.map((r) => r.stop)).toEqual(["x", "y"]);
+    expect(t2.map((r) => r.arrival)).toEqual(["07:00:00", "07:30:00"]);
+  });
+
+  it("ignores an order that invents a stop the trip doesn't serve", () => {
+    // A stale override against a re-vendored feed. Shipping the original order
+    // is far better than shipping one with invented calls.
+    const out = applyStopTimeOrderToCsv(
+      STOP_TIMES_CSV,
+      new Map([["t1", ["a", "b", "zzz"]]]),
+    );
+
+    expect(calls(out).filter((r) => r.trip === "t1").map((r) => r.stop)).toEqual(
+      ["a", "b", "c"],
+    );
+  });
+
+  it("ignores an order that drops a call", () => {
+    const out = applyStopTimeOrderToCsv(
+      STOP_TIMES_CSV,
+      new Map([["t1", ["a", "b"]]]),
+    );
+
+    expect(calls(out).filter((r) => r.trip === "t1").map((r) => r.stop)).toEqual(
+      ["a", "b", "c"],
+    );
+  });
+
+  it("ignores an order for a trip that isn't in the feed", () => {
+    const out = applyStopTimeOrderToCsv(
+      STOP_TIMES_CSV,
+      new Map([["ghost", ["a", "b"]]]),
+    );
+
+    expect(calls(out)).toHaveLength(5);
+  });
+
+  it("preserves every column of the base header", () => {
+    const out = applyStopTimeOrderToCsv(
+      STOP_TIMES_CSV,
+      new Map([["t1", ["c", "b", "a"]]]),
+    );
+
+    expect(out.split("\n")[0]).toBe(STOP_TIMES_CSV.split("\n")[0]);
+  });
+
+  it("returns the content untouched when the table isn't stop_times", () => {
+    expect(applyStopTimeOrderToCsv(STOPS_CSV, new Map([["t1", ["a"]]]))).toBe(
+      STOPS_CSV,
+    );
+  });
+});

@@ -34,7 +34,7 @@ fix search grouping and the T3b cascade).
 
 Route tabs + full CRUD (locked 2026-08-12, docs/route-editor-design.md part 2).
 Tabs: Details | Stops | Trips | Service. Costs/Coverage dropped, Shapes deferred.
-- [ ] T0: provenance (Route/Stop.origin, tombstones, Trip.directionId) + the three
+- [x] T0: provenance (Route/Stop.origin, tombstones, Trip.directionId) + the three
       foundation corrections — scoped deleteMany, tombstone-aware apply, CSV
       rewriters that append operator rows. MUST land before T1.
 - [x] T1: tab shell + Details (5a) + create/duplicate/delete route
@@ -46,7 +46,11 @@ Tabs: Details | Stops | Trips | Service. Costs/Coverage dropped, Shapes deferred
       by duplicate, but nothing in the UI calls it yet
 - [ ] T3b: cascade switch — affected-route count (distinct, max 26 at Torhayloch)
       + grouped closures sharing a cascadeId, reopened together
-- [ ] T4: stop reordering (5b — TripStopOverride + stop_times regen)
+- [x] T4: stop reordering (5b). `reorderRouteStops` + `RouteStopOrderOverride` +
+      drag-to-reorder in the Stops tab + seed replay + stop_times.txt regen in
+      the export. The /ship plan audit (2026-08-17) caught the export half
+      missing — a reordered list showed in the console and survived a reseed
+      while the published zip kept the feed's original order.
 Shape drawing (5c-shape, docs/route-editor-design.md). Snapping reuses the OTP
 graph in CAR mode — verified 6,067m road-following vs 4,138m straight-line.
 - [x] S1: /api/console/snap + ShapeOverride + saveRouteShape (server-side re-snap)

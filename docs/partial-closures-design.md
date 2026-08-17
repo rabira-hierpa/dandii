@@ -1,5 +1,5 @@
-<!-- /autoplan restore point: /Users/rz/.gstack/projects/rabira-hierpa-menged/feat-partial-closures-autoplan-restore-20260807-000858.md -->
-<!-- /autoplan working plan: /Users/rz/.gstack/projects/rabira-hierpa-menged/feat-partial-closures-plan-20260807.md -->
+<!-- /autoplan restore point: ~/.gstack/projects/rabira-hierpa-menged/feat-partial-closures-autoplan-restore-20260807-000858.md -->
+<!-- /autoplan working plan: ~/.gstack/projects/rabira-hierpa-menged/feat-partial-closures-plan-20260807.md -->
 
 # Partial (segment) route closures — locked design
 

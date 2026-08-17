@@ -3,7 +3,10 @@
 ## P1 — Deferred from fare-registry plan (ship 2026-07-23)
 
 - [ ] Console fare-history UI (FareChangeLog exists; no console surface yet)
-- [ ] Unit/integration tests for fare-proposal action guards (dedup, rate limit, double-decision)
+- [x] Unit/integration tests for fare-proposal action guards — 16 tests covering
+      the rolling-24h limit, the partial-unique dedup translation (and that it
+      does NOT swallow unrelated DB errors), the double-decision status guard,
+      the per-route advisory lock, and the sibling-credit ordering.
 - [ ] Playwright authenticated wedge: submit → approve → fare on sheet → export
 
 ## ~~P1 — Planner ignores direction on partial closures~~ FIXED 2026-08-18

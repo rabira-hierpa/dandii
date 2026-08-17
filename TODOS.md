@@ -63,6 +63,11 @@ graph in CAR mode — verified 6,067m road-following vs 4,138m straight-line.
 - [ ] S3: apply-overrides replays ShapeOverride; export regenerates shapes.txt
 - [x] Restore corrupted punctuation in network-map.tsx
 
+Deferred from the S2 QA pass (2026-08-17):
+- [ ] P2 — Component test infrastructure (@testing-library/react + jsdom). The
+      "detail fetch failed → blank panel" bug is a render-branch bug with no way
+      to test it; the repo has unit tests only.
+
 Deferred from the S2 autoplan (2026-08-16):
 - [ ] P2 — Playwright E2E: draw -> save -> export contains the drawn shapes.txt.
       Needs S3 to assert against; no Playwright config exists in web/ yet.

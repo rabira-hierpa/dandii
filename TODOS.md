@@ -44,8 +44,17 @@ Tabs: Details | Stops | Trips | Service. Costs/Coverage dropped, Shapes deferred
 - [x] T3: Trips tab (editable block_id via TripOverride) + Service tab.
       network-map.tsx is 1171 -> 731 lines and complexity 51 -> 17. Both it and
       route-service-tab sit at 17 against the limit of 15 — worth a second pass.
-- [ ] Route "+ Add route" entry point: createRoute action exists and is tested
-      by duplicate, but nothing in the UI calls it yet
+- [x] Route "+ Add route" entry point — already existed at /console/routes, and
+      it was **silently dropping routes from the published feed**: `origin`
+      defaults to FEED and the exporter only collects created routes with
+      `origin: OPERATOR`, so a route added in the console showed on the map and
+      then vanished on publish. Fixed + regression test; one live route (A25)
+      repaired in the dev DB.
+- [ ] **DRY: two createRoute actions.** `actions/routes.ts` (perm `route:create`,
+      id `manual-…`) and `actions/route-edit.ts` (perm `feedEdit:edit`, id
+      `op:…`) both create routes with different id schemes and permissions.
+      Consolidate on one, or document why two exist. The origin bug above came
+      straight out of this split.
 - [ ] T3b: cascade switch — affected-route count (distinct, max 26 at Torhayloch)
       + grouped closures sharing a cascadeId, reopened together
 - [x] T4: stop reordering (5b). `reorderRouteStops` + `RouteStopOrderOverride` +

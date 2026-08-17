@@ -50,6 +50,11 @@ export async function createRoute(input: z.infer<typeof routeFieldsSchema>) {
       type: data.type,
       lengthMeters: data.lengthKm != null ? data.lengthKm * 1000 : null,
       agencyId: agency.id,
+      // `origin` defaults to FEED, and the exporter only picks up created routes
+      // with `origin: OPERATOR` (gtfs-export.ts). Without this a route added
+      // here showed on the map and in the console, then vanished on publish —
+      // the operator had no way to see that the feed never carried it.
+      origin: "OPERATOR",
       ...(data.operatorId
         ? {
             assignment: {

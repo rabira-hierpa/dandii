@@ -25,7 +25,9 @@ better long-term answer and would also fix search grouping and the T3b cascade.
 - [ ] Playwright: console create SEVERED → map split → directions open-leg / spanning OD
       (all four verified manually against the dev DB on 2026-08-10; only the
       browser-level console form submit is still unexercised)
-- [ ] Short TTL cache for active closures on the directions hot path
+- [x] Short TTL cache for active closures on the directions hot path (10 s,
+      dropped on every closure write). Only the live "now" read is cached — a
+      dated query bypasses it and can't poison it.
 
 ## P1 — Batch D (route/stop editor), in progress 2026-08-10
 

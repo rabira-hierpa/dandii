@@ -1,3 +1,4 @@
+<!-- /autoplan restore point: ~/.gstack/projects/rabira-hierpa-menged/feat-partial-closures-autoplan-restore-20260816-175619.md -->
 # Batch D — Console Route/Stop Editor (locked design)
 
 Status: **locked design, not yet built.** This is the plan for the console GTFS
@@ -511,8 +512,122 @@ operator who knows the road exists and that OSM is wrong.
 | | Scope |
 |---|---|
 | S1 | `/api/console/snap` (CAR-mode segment snapping) + ShapeOverride + save action |
-| S2 | right-click menu + draw mode on the console map |
+| S2 | Shapes tab + right-click menu + draw mode on the console map (absorbs T5) |
 | S3 | apply-overrides replay + shapes.txt regeneration in the export |
 
 S1 is independently verifiable against the live graph, which is why it goes
 first.
+
+---
+
+# S2 review — /autoplan, 2026-08-16
+
+Reviewed at commit `cb27c04` on `feat/partial-closures`. Mode: SELECTIVE
+EXPANSION. Codex unavailable (binary not installed); single-reviewer.
+
+## The premise that changed
+
+The doc says the entry point is right-clicking a route line. That cannot reach a
+route with no line. The console map draws from `/api/geo/routes?directions=both`,
+which is `loadDirectionalShapes()` — `trip.findMany({ where: { shapeId: { not:
+null } } })`. A route created by `createRoute` has no trips at all, so it has no
+feature, so there is nothing to right-click. The one case a drawing tool exists
+for is the one case the entry point excludes.
+
+It also fails quietly. `mirrorOntoShapes` collects shape ids from the direction's
+trips; with none it updates nothing, and `saveRouteShape` still returns `ok:
+true`. The operator sees "saved" and an unchanged map.
+
+All 891 feed route-directions currently have a shape, so this is unreachable for
+imported routes — it becomes reachable the moment "+ Add route" is wired up.
+
+**Resolution:** a **Shapes tab** is the home for shape editing; right-click stays
+as the shortcut into the same state. T5 is no longer a separate slice.
+
+## What already exists
+
+| Sub-problem | Code | Reused |
+|---|---|---|
+| Snap a segment to roads | `lib/road-snap.ts` | yes (S1) |
+| Persist + re-snap server-side | `actions/shape-edit.ts` | yes (S1) |
+| Bounds + size validation | `shape-edit-schema.ts` | yes |
+| Line rendering | `Source`/`Layer` in `network-map.tsx` | yes |
+| Editor UI state | `stores/route-editor-store.ts` | extend |
+| Waypoint markers | `StopMarkersLayer` is stop-shaped | new layer |
+| Context menu | nothing — no `onContextMenu` in `src` | new |
+| Reopen a drawing | `RouteEditorDetail` has no `ShapeOverride` | **must add** |
+
+## NOT in scope
+
+- **Trim / reverse / split geometry.** Vertex-level CAD; the doc's own premise
+  rejects it. Operators place decisions, not vertices.
+- **Shape history.** No `FareChangeLog` equivalent for geometry. `ShapeOverride`
+  keeps only the current edit. → TODOS P3.
+- **shapes.txt regeneration and apply-overrides replay.** That is S3.
+- **Publish / version badge.** Already tracked under the Apply/Publish pipeline.
+- **E2E draw→save→export.** Needs S3 to assert against. → TODOS P2.
+
+## Dream state delta
+
+S2 closes the last read-only surface in the route editor: geometry becomes
+editable, with the snapped line, its provenance, and its failures all visible.
+It does not reach the exported feed — between S2 and S3 the console and rider map
+show a shape the GTFS zip does not contain. That is the same divergence every
+other override already has, and it is named in the UI rather than hidden.
+
+## Error & rescue registry
+
+| Failure | Rescued today | Action | User sees |
+|---|---|---|---|
+| OTP can't route a segment | Y (S1) | straight line, `straightLine: true` | dashed segment |
+| OTP wholly down | Y (S1) | every segment straight | one aggregate message, not N dashes |
+| `fetch` rejects (offline) | N | keep last good preview | "Couldn't reach the server" |
+| Out-of-order snap response | N | sequence token, drop stale | nothing |
+| Save on a trip-less direction | **N — critical** | return `ok: false` | "This direction has no trips to attach a shape to" |
+| Prisma upsert throws | N | catch → typed error | "Couldn't save the shape" |
+| 201st waypoint | N | block the click locally | "200 waypoints is the limit" |
+| Click outside Addis | N | reject the click locally | "That point is outside Addis" |
+| Session expires mid-draw | N | keep the draft, prompt re-auth | "Session expired — your drawing is kept" |
+| Unsaved draft discarded | N | confirm first | "Discard this drawing?" |
+
+## Failure modes registry
+
+| Codepath | Failure mode | Rescued | Test | User sees | Logged |
+|---|---|---|---|---|---|
+| `saveRouteShape` | no trips in direction | N → **fix** | N → add | **silent ok** ← CRITICAL GAP | N |
+| `snapWaypoints` | 199 parallel OTP calls | N → **cap 6** | N → add | stalled planner | N |
+| `/api/console/snap` | no rate limit | N → **throttle** | N | — | N |
+| draw client | stale response paints old line | N → **seq token** | N → add | wrong line | N |
+| draw client | route switch discards draft | N → **confirm** | N | silent loss | N |
+| `road-snap.ts` | — | — | **0 tests exist** | — | — |
+| `shape-edit.ts` | — | — | **0 tests exist** | — | — |
+
+<!-- AUTONOMOUS DECISION LOG -->
+## Decision audit trail
+
+| # | Phase | Decision | Class | Principle | Rationale |
+|---|---|---|---|---|---|
+| 1 | CEO | Approach B: Shapes tab is the home, right-click the shortcut | taste → **user-confirmed** | P1+P2 | Right-click cannot reach a route with no line |
+| 2 | CEO | Absorb T5 into S2 | taste → **user-confirmed** | P2 | Same component; splitting ships an undiscoverable half |
+| 3 | CEO | Reject Approach C (vertex CAD) | mechanical | P5 | The doc's own premise rejects vertex editing |
+| 4 | CEO | Draw logic in a hook + layer, not inline in network-map | mechanical | P5 | File is at complexity 17/15 and most-churned in the repo |
+| 5 | CEO | Aggregate message when OTP is wholly down | mechanical | P1 | 12 separate dashes is not an error report |
+| 6 | CEO | Ship "Reset to feed shape" in S2 | mechanical | P1 | Without it drawing is a one-way door for the operator |
+| 7 | CEO | Cap snap concurrency at 6 | mechanical | P1 | 199 parallel calls at one OTP container is a self-DoS |
+| 8 | CEO | Rate-limit `/api/console/snap` | mechanical | P1 | CLAUDE.md §15 |
+| 9 | CEO | Shape history → TODOS P3 | mechanical | P3 | Outside blast radius; needs its own model |
+| 10 | CEO | Undo in scope | taste | P1+P5 | ~10 lines; a misclick otherwise costs a full redraw |
+| 11 | CEO | 8 unit specs in S2, E2E to S3 | mechanical | P1 | E2E needs the export to assert against |
+| 12 | Design | Skip generated mockups | mechanical | P3+P4 | Four shipped sibling tabs already fix the visual language |
+| 13 | Design | Banner top-left, actions bottom-right | mechanical | P5 | Reuses the hover-card slot; clears the Layers FAB |
+| 14 | Design | Blue snapped / amber dashed / dimmed reference | mechanical | P5 | DESIGN.md reserves green for brand and "open route" |
+| 15 | Design | Draw disabled below `xl`, with a reason | taste | P5 | Honest beats half-working; console is a desk tool |
+| 16 | Design | Warn-and-allow on unsnapped save | mechanical | P1 | The plan's premise is that OSM can be wrong |
+| 17 | Design | Confirm on reset-to-feed | mechanical | P1 | Destructive |
+| 18 | Design | Dashed-segment copy blames OSM, not the operator | mechanical | P1 | A bare dash reads as user error |
+| 19 | Eng | Mode-gate `onMapClick` | mechanical | P1 | Otherwise the 2nd waypoint click wipes the draft |
+| 20 | Eng | `AbortSignal.timeout(8000)` on the OTP fetch | mechanical | P1 | A hung OTP never rejects, so the fallback never fires |
+| 21 | Eng | try/catch the Prisma writes | mechanical | P1 | CLAUDE.md §7 |
+| 22 | Eng | Per-click single-segment snap + client cache | mechanical | P3 | O(n²) OTP round trips otherwise |
+| 23 | Eng | Regression test on the click gate | **mandatory** | REGRESSION RULE | Modifies existing behaviour with no coverage |
+| 24 | Eng | Draft in its own Source | mechanical | P5 | Avoids re-rendering every route per click |

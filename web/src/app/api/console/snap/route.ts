@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { requirePermission } from "@/lib/session";
 import { snapWaypoints, type Waypoint } from "@/lib/road-snap";
+import { allowSnap } from "@/lib/snap-rate-limit";
 import { shapeWaypointsSchema } from "@/actions/shape-edit-schema";
 
 /**
@@ -11,7 +12,20 @@ import { shapeWaypointsSchema } from "@/actions/shape-edit-schema";
  * the answer changes whenever the OSM graph is rebuilt.
  */
 export async function POST(request: NextRequest) {
-  await requirePermission({ feedEdit: ["shape"] });
+  const session = await requirePermission({ feedEdit: ["shape"] });
+
+  // Each segment is an OTP round trip, and OTP also answers every rider's
+  // journey plan. Throttle per operator so one drawing session can't starve it.
+  const limit = allowSnap(session.user.id);
+  if (!limit.allowed) {
+    return Response.json(
+      { error: "Too many snap requests — slow down for a moment" },
+      {
+        status: 429,
+        headers: { "Retry-After": String(limit.retryAfterSeconds ?? 60) },
+      },
+    );
+  }
 
   let body: unknown;
   try {

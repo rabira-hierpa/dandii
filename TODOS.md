@@ -50,11 +50,25 @@ Tabs: Details | Stops | Trips | Service. Costs/Coverage dropped, Shapes deferred
 Shape drawing (5c-shape, docs/route-editor-design.md). Snapping reuses the OTP
 graph in CAR mode — verified 6,067m road-following vs 4,138m straight-line.
 - [x] S1: /api/console/snap + ShapeOverride + saveRouteShape (server-side re-snap)
-- [ ] S2: right-click a route -> "Edit shape" -> draw mode with live snapped
-      preview, waypoint add/remove, dashed rendering for unsnapped segments
+- [x] S2: Shapes tab + right-click "Edit shape" -> draw mode with live snapped
+      preview, waypoint add/remove, dashed rendering for unsnapped segments.
+      **Absorbed T5** — /autoplan 2026-08-16 found right-click alone cannot reach
+      a route with no line (the console map draws only trips with a shapeId), so
+      a newly created route could never get one drawn. Shapes tab is the home;
+      right-click is the shortcut. Also added: baseGeojson + "reset to feed
+      shape", a trip-less-direction refusal (was a silent ok:true), an 8s OTP
+      timeout, a concurrency cap of 6, and a per-operator snap throttle.
+      54 new tests. network-map.tsx is finally under the complexity limit
+      (17 -> 21 -> under) after extracting route-tab-body and use-route-hover.
 - [ ] S3: apply-overrides replays ShapeOverride; export regenerates shapes.txt
-- [ ] T5: Shapes tab — Edit/Trim/Snap list (5c-shape UI entry point)
 - [x] Restore corrupted punctuation in network-map.tsx
+
+Deferred from the S2 autoplan (2026-08-16):
+- [ ] P2 — Playwright E2E: draw -> save -> export contains the drawn shapes.txt.
+      Needs S3 to assert against; no Playwright config exists in web/ yet.
+- [ ] P3 — Shape history. `ShapeOverride` keeps only the current edit; there is
+      no `FareChangeLog` equivalent for geometry, so a bad shape can be reset to
+      the feed but not to the previous operator edit. Needs its own model.
 
 Shape collapse folded into T0: store both directions in a `Shape` model; public
 map shows inbound only, console shows both (amended 2026-08-12).

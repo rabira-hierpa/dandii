@@ -16,6 +16,21 @@ import { decodePolyline } from "@/components/map/polyline";
 
 const OTP_URL = process.env.OTP_URL ?? "http://localhost:8080";
 
+/**
+ * A hung OTP never rejects, so without this the `catch` below never runs and a
+ * live preview freezes with no failure and no dashed fallback. 8s is generous
+ * for a single CAR leg on a city-sized graph.
+ */
+const SNAP_TIMEOUT_MS = 8_000;
+
+/**
+ * OTP also serves every rider's journey plan. Firing one request per segment in
+ * parallel means a 200-waypoint line lands 199 at once on a single container,
+ * which is a self-inflicted outage. Six keeps a redraw fast without starving the
+ * planner.
+ */
+const MAX_CONCURRENT_SNAPS = 6;
+
 export interface Waypoint {
   lat: number;
   lon: number;
@@ -68,6 +83,7 @@ export async function snapSegment(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       cache: "no-store",
+      signal: AbortSignal.timeout(SNAP_TIMEOUT_MS),
       body: JSON.stringify({
         query: PLAN_QUERY,
         variables: { from, to },
@@ -99,10 +115,36 @@ export async function snapSegment(
 }
 
 /**
+ * Run `worker` over every item, never more than `limit` at once, preserving
+ * input order in the result. A plain `Promise.all` over the segment list would
+ * put the whole line on the wire simultaneously — see MAX_CONCURRENT_SNAPS.
+ */
+async function mapWithLimit<T, R>(
+  items: T[],
+  limit: number,
+  worker: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  const runners = Array.from(
+    { length: Math.min(limit, items.length) },
+    async () => {
+      while (next < items.length) {
+        const index = next++;
+        results[index] = await worker(items[index]);
+      }
+    },
+  );
+  await Promise.all(runners);
+  return results;
+}
+
+/**
  * Snap a whole waypoint list into one line.
  *
- * Segments are requested in parallel — an operator redrawing a 12-waypoint
- * corridor should not wait for eleven sequential OTP round trips.
+ * Segments are requested concurrently — an operator redrawing a 12-waypoint
+ * corridor should not wait for eleven sequential OTP round trips — but capped,
+ * so a long line cannot flood the planner.
  */
 export async function snapWaypoints(
   waypoints: Waypoint[],
@@ -119,8 +161,8 @@ export async function snapWaypoints(
     from,
     to: waypoints[i + 1],
   }));
-  const segments = await Promise.all(
-    pairs.map(({ from, to }) => snapSegment(from, to)),
+  const segments = await mapWithLimit(pairs, MAX_CONCURRENT_SNAPS, ({ from, to }) =>
+    snapSegment(from, to),
   );
 
   const coordinates: [number, number][] = [];

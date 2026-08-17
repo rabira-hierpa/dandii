@@ -1,33 +1,33 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import MapGl, {
   Layer,
   Source,
   type MapLayerMouseEvent,
   type MapRef,
 } from "react-map-gl/maplibre";
-import type { FilterSpecification } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { RouteDetailsTab } from "@/components/console/route-details-tab";
-import { RouteServiceTab } from "@/components/console/route-service-tab";
-import { RouteStopsTab } from "@/components/console/route-stops-tab";
+import { RouteTabBody } from "@/components/console/route-tab-body";
 import { RouteTabs } from "@/components/console/route-tabs";
-import { RouteTripsTab } from "@/components/console/route-trips-tab";
+import { ShapeContextMenu } from "@/components/console/shape-context-menu";
+import {
+  SHAPE_WAYPOINT_LAYER_ID,
+  ShapeDrawLayer,
+} from "@/components/console/shape-draw-layer";
+import { ShapeDrawToolbar } from "@/components/console/shape-draw-toolbar";
+import { useMediaQuery } from "@/hooks/use-media-query";
+import { useRouteHover } from "@/hooks/use-route-hover";
+import { useShapeDraw } from "@/hooks/use-shape-draw";
+import { useShapeDrawController } from "@/hooks/use-shape-draw-controller";
 import { useRouteEditorStore } from "@/stores/route-editor-store";
+import { useShapeDrawStore } from "@/stores/shape-draw-store";
 import type { RouteEditorDetail } from "@/types/console";
 import { RouteChip } from "@/components/console/route-chip";
 import type { ClosureKind } from "@/lib/closures";
 import { LayersPanel } from "@/components/map/layers-panel";
 import {
   ADDIS_CENTER,
-  applyRouteHoverTransitions,
   BASEMAP_STYLE,
   ROUTE_HOVER_CASING_WIDTH,
   ROUTE_HOVER_LINE_WIDTH,
@@ -64,7 +64,6 @@ export interface NetworkRoute {
   } | null;
 }
 
-
 function statusLabel(closure: NetworkRoute["closure"]): string {
   if (!closure) return "Open";
   if (closure.kind === "WHOLE_ROUTE") return "Closed";
@@ -86,10 +85,6 @@ interface NetworkMapProps {
   routes: NetworkRoute[];
   isMaintainer: boolean;
 }
-
-// Module-level so it persists across renders without a ref read during render.
-const hoverStopCache = new Map<string, StopSearchResult[]>();
-
 
 /**
  * The console asks for both directions — operators edit each line separately,
@@ -117,17 +112,7 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
   );
   const [panelSearch, setPanelSearch] = useState("");
 
-  // Hover preview — mirrors the public map so operators get the same feel.
-  const [hoveredRouteId, setHoveredRouteId] = useState<string | null>(null);
-  const [fetchedHoverStops, setFetchedHoverStops] = useState<{
-    routeId: string;
-    stops: StopSearchResult[];
-  } | null>(null);
-
-
-  const activeTab = useRouteEditorStore((s) => s.activeTab);
   const editorDetail = useRouteEditorStore((s) => s.detail);
-  const editorLoading = useRouteEditorStore((s) => s.detailLoading);
   const editorFeedback = useRouteEditorStore((s) => s.feedback);
   const editorDirectionId = useRouteEditorStore((s) => s.directionId);
   const focusedStop = useRouteEditorStore((s) => s.focusedStop);
@@ -151,6 +136,73 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
     void loadGeojson();
   }, [loadGeojson]);
 
+  const routeById = useMemo(
+    () => new Map(routes.map((r) => [r.id, r])),
+    [routes],
+  );
+
+  const isOperatorVisible = useCallback(
+    (code: OperatorCode | null) => !code || !hiddenOperators.includes(code),
+    [hiddenOperators],
+  );
+
+  /** The visible route line under the cursor, if any. */
+  const routeUnderCursor = useCallback(
+    (event: MapLayerMouseEvent) => {
+      // Opacity-0 lines stay hit-testable — skip hidden agencies (same as the
+      // public map).
+      const feature = event.features?.find((f) =>
+        isOperatorVisible(
+          (f.properties?.operatorCode as OperatorCode | null) ?? null,
+        ),
+      );
+      const routeId = feature?.properties?.routeId as string | undefined;
+      if (!routeId) return null;
+      return {
+        routeId,
+        directionId: Number(feature?.properties?.directionId ?? 0),
+      };
+    },
+    [isOperatorVisible],
+  );
+
+  const selectRoute = useCallback(
+    (routeId: string) => {
+      if (routeId === selectedRouteId) return;
+      ga.consoleSelectRoute(routeId);
+      setSelectedRouteId(routeId);
+    },
+    [selectedRouteId, setSelectedRouteId],
+  );
+
+  // Shape drawing. `useShapeDraw` keeps the snapped preview in step with the
+  // points; the controller owns what each map event means in draw mode, so this
+  // component only has to branch on the mode and render.
+  const drawWaypointCount = useShapeDrawStore((s) => s.waypoints.length);
+  const closeContextMenu = useShapeDrawStore((s) => s.closeContextMenu);
+  const contextMenu = useShapeDrawStore((s) => s.contextMenu);
+  const resetDraft = useShapeDrawStore((s) => s.resetDraft);
+  useShapeDraw();
+  const shape = useShapeDrawController(
+    editorDetail,
+    reloadEditorDetail,
+    routeUnderCursor,
+    selectRoute,
+  );
+  const drawing = shape.drawing;
+
+  // The console stacks below xl, which leaves the map too small to draw in.
+  const canDraw = useMediaQuery("(min-width: 1280px)");
+
+  // Hover preview — suppressed while drawing.
+  const hover = useRouteHover(
+    mapRef,
+    routeById,
+    selectedRouteId,
+    isOperatorVisible,
+    drawing,
+  );
+
   useEffect(() => {
     let cancelled = false;
     void fetchRouteGeojson().then((data) => {
@@ -161,10 +213,6 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
     };
   }, []);
 
-  const routeById = useMemo(
-    () => new Map(routes.map((r) => [r.id, r])),
-    [routes],
-  );
   const selected = selectedRouteId ? routeById.get(selectedRouteId) : null;
   const closedRoutes = routes.filter((r) => r.closure);
   const fullyClosed = closedRoutes.filter(
@@ -174,6 +222,28 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
     (r) => r.closure?.kind !== "WHOLE_ROUTE",
   );
 
+  /**
+   * Leaving a route abandons any drawing on it. `resetForRoute` already wipes
+   * the editor, so the draw store has to follow or a stale draft would be
+   * painted over the next route's line.
+   *
+   * The draft only — right-clicking an unselected route selects it AND opens the
+   * menu, so clearing the menu here would close it in the tick it opened.
+   */
+  useEffect(() => {
+    resetDraft();
+  }, [selectedRouteId, resetDraft]);
+
+  // Closing the tab mid-draw loses work the server has never seen.
+  useEffect(() => {
+    if (!drawing || drawWaypointCount === 0) return;
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [drawing, drawWaypointCount]);
 
   // Editor payload for the selected route (tabs read this).
   useEffect(() => {
@@ -233,13 +303,6 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
     });
   }, [focusedStop]);
 
-
-
-  const isOperatorVisible = useCallback(
-    (code: OperatorCode | null) => !code || !hiddenOperators.includes(code),
-    [hiddenOperators],
-  );
-
   const panelRoutes = useMemo(() => {
     const q = panelSearch.trim().toLowerCase();
     const visible = routes.filter((r) => isOperatorVisible(r.operatorCode));
@@ -293,97 +356,25 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
   );
 
   const onMapClick = (event: MapLayerMouseEvent) => {
-    // Opacity-0 lines stay hit-testable — skip hidden agencies (same as public map).
-    const feature = event.features?.find((f) =>
-      isOperatorVisible(
-        (f.properties?.operatorCode as OperatorCode | null) ?? null,
-      ),
-    );
-    const routeId = feature ? (feature.properties.routeId as string) : null;
-    if (routeId) ga.consoleSelectRoute(routeId);
-    setSelectedRouteId(routeId);
+    if (contextMenu) closeContextMenu();
+
+    // In draw mode a click places a point and nothing else. Falling through to
+    // the selection branch would set selectedRouteId to null the moment the
+    // operator clicked off a line, which resets the editor and takes the
+    // half-finished drawing with it.
+    if (drawing) {
+      shape.placeWaypoint(event);
+      return;
+    }
+
+    const hit = routeUnderCursor(event);
+    if (hit) ga.consoleSelectRoute(hit.routeId);
+    setSelectedRouteId(hit?.routeId ?? null);
   };
-
-  // A hovered route is only highlighted while it isn't the selected one,
-  // and while its agency layer is still visible.
-  const effectiveHover =
-    hoveredRouteId &&
-    hoveredRouteId !== selectedRouteId &&
-    isOperatorVisible(routeById.get(hoveredRouteId)?.operatorCode ?? null)
-      ? hoveredRouteId
-      : null;
-  const hoveredRoute = effectiveHover ? routeById.get(effectiveHover) : null;
-  // Derived (not stored) so there's no synchronous setState on hover-out.
-  const hoverStops: StopSearchResult[] = effectiveHover
-    ? (hoverStopCache.get(effectiveHover) ??
-      (fetchedHoverStops?.routeId === effectiveHover
-        ? fetchedHoverStops.stops
-        : []))
-    : [];
-
-  const onMouseMove = (event: MapLayerMouseEvent) => {
-    const feature = event.features?.find((f) =>
-      isOperatorVisible(
-        (f.properties?.operatorCode as OperatorCode | null) ?? null,
-      ),
-    );
-    const routeId = feature?.properties?.routeId as string | undefined;
-    const canvas = mapRef.current?.getCanvas();
-    if (canvas) canvas.style.cursor = routeId ? "pointer" : "";
-    setHoveredRouteId(routeId ?? null);
-  };
-
-  const onMouseLeave = () => {
-    const canvas = mapRef.current?.getCanvas();
-    if (canvas) canvas.style.cursor = "";
-    setHoveredRouteId(null);
-  };
-
-  const hoverFilter: FilterSpecification = [
-    "==",
-    ["get", "routeId"],
-    effectiveHover ?? "",
-  ];
-
-  // Fetch the hovered route's stops (cached). setState only in the async
-  // callback — the visible list is derived above, so no clear-effect needed.
-  useEffect(() => {
-    if (!effectiveHover || hoverStopCache.has(effectiveHover)) return;
-    let cancelled = false;
-    const handle = setTimeout(() => {
-      void fetch(`/api/routes/${effectiveHover}/hover`)
-        .then((res) => (res.ok ? res.json() : null))
-        .then((data: { stops?: StopSearchResult[] } | null) => {
-          if (cancelled || !data?.stops) return;
-          hoverStopCache.set(effectiveHover, data.stops);
-          setFetchedHoverStops({ routeId: effectiveHover, stops: data.stops });
-        })
-        .catch(() => {});
-    }, 60);
-    return () => {
-      cancelled = true;
-      clearTimeout(handle);
-    };
-  }, [effectiveHover]);
-
-  // Smooth width/opacity transitions on the hover layers.
-  useEffect(() => {
-    const map = mapRef.current?.getMap();
-    if (!map) return;
-    const apply = () => applyRouteHoverTransitions(map);
-    if (map.isStyleLoaded()) apply();
-    else map.once("idle", apply);
-  }, [effectiveHover]);
-
-
-
-
-
 
   return (
     <div className="flex items-start gap-4 max-xl:flex-col">
       <div className="flex w-90 shrink-0 flex-col gap-3 max-xl:w-full">
-
         {selected ? (
           <div className="flex flex-col gap-3 rounded-xl border border-[#E2E6DE] bg-white p-4">
             <div className="flex items-center gap-2">
@@ -410,10 +401,7 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
               }
               tripCount={
                 editorDetail
-                  ? editorDetail.directions.reduce(
-                      (n, d) => n + d.tripCount,
-                      0,
-                    )
+                  ? editorDetail.directions.reduce((n, d) => n + d.tripCount, 0)
                   : null
               }
             />
@@ -431,43 +419,12 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
               </div>
             )}
 
-            {activeTab !== "service" && editorLoading && (
-              <div className="py-3 text-[12.5px] text-[#5C6B5E]">Loading…</div>
-            )}
-
-            {/* Keyed on the route id so selecting a different route remounts the
-                tab. Without it the form's useState initialisers keep the first
-                route's values — every field, not just the visible ones. */}
-            {activeTab === "details" && editorDetail && (
-              <RouteDetailsTab
-                key={editorDetail.id}
-                detail={editorDetail}
-                onChanged={reloadEditorDetail}
-              />
-            )}
-
-            {activeTab === "stops" && editorDetail && (
-              <RouteStopsTab
-                key={editorDetail.id}
-                detail={editorDetail}
-                onChanged={reloadEditorDetail}
-              />
-            )}
-
-            {activeTab === "trips" && editorDetail && (
-              <RouteTripsTab
-                detail={editorDetail}
-                onChanged={reloadEditorDetail}
-              />
-            )}
-
-            {activeTab === "service" && (
-              <RouteServiceTab
-                route={selected}
-                isMaintainer={isMaintainer}
-                onChanged={reloadEditorDetail}
-              />
-            )}
+            <RouteTabBody
+              route={selected}
+              isMaintainer={isMaintainer}
+              canDraw={canDraw}
+              onChanged={reloadEditorDetail}
+            />
           </div>
         ) : (
           <div className="rounded-xl border border-[#E2E6DE] bg-white p-4 text-[13px] text-[#5C6B5E]">
@@ -488,6 +445,8 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
           <div className="flex max-h-[38vh] flex-col gap-1.5 overflow-y-auto">
             {panelRoutes.map((route) => (
               <button
+                title={route.longName}
+                type="button"
                 key={route.id}
                 onClick={() => {
                   ga.consoleSelectRoute(route.id);
@@ -585,22 +544,34 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
             <LayersThree01 className="size-5.5" />
           </button>
           <LayersPanel />
-          {hoveredRoute && (
+          <ShapeDrawToolbar
+            onSave={shape.onSaveShape}
+            onCancel={shape.onCancelShape}
+          />
+          {contextMenu && (
+            <ShapeContextMenu
+              directionLabel={shape.menuDirectionLabel}
+              canReset={shape.menuCanReset}
+              onEditShape={shape.onEditShapeFromMenu}
+              onResetShape={shape.onResetShapeFromMenu}
+            />
+          )}
+          {hover.route && (
             <div className="pointer-events-none absolute top-2.5 left-2.5 z-10 flex max-w-[80%] items-center gap-2 rounded-lg border border-[#E2E6DE] bg-white/95 px-2.5 py-1.5 shadow-sm backdrop-blur">
               <RouteChip
-                shortName={hoveredRoute.shortName}
-                operatorCode={hoveredRoute.operatorCode}
+                shortName={hover.route.shortName}
+                operatorCode={hover.route.operatorCode}
                 size="sm"
               />
               <span className="min-w-0 truncate text-[12.5px] font-medium text-[#1C2321]">
-                {hoveredRoute.longName}
+                {hover.route.longName}
               </span>
-              {hoveredRoute.closure && (
+              {hover.route.closure && (
                 <span
                   className="shrink-0 rounded-full px-2 py-0.5 text-[10.5px] font-semibold"
-                  style={statusStyle(hoveredRoute.closure)}
+                  style={statusStyle(hover.route.closure)}
                 >
-                  {statusLabel(hoveredRoute.closure)}
+                  {statusLabel(hover.route.closure)}
                 </span>
               )}
             </div>
@@ -610,10 +581,18 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
             initialViewState={{ ...ADDIS_CENTER, zoom: 11 }}
             mapStyle={BASEMAP_STYLE}
             canvasContextAttributes={{ preserveDrawingBuffer: true }}
-            interactiveLayerIds={["routes-open", "routes-closed"]}
+            interactiveLayerIds={
+              drawing
+                ? [SHAPE_WAYPOINT_LAYER_ID]
+                : ["routes-open", "routes-closed"]
+            }
+            // A double-click would otherwise drop two waypoints and zoom.
+            doubleClickZoom={!drawing}
             onClick={onMapClick}
-            onMouseMove={onMouseMove}
-            onMouseLeave={onMouseLeave}
+            onContextMenu={shape.onContextMenu}
+            onMouseMove={hover.onMouseMove}
+            onMouseLeave={hover.onMouseLeave}
+            onMoveStart={contextMenu ? closeContextMenu : undefined}
             style={{ width: "100%", height: "100%" }}
           >
             {geojson && (
@@ -642,11 +621,11 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
                     "line-dasharray": [2, 1.5],
                   }}
                 />
-                {effectiveHover && (
+                {hover.routeId && (
                   <Layer
                     id="routes-hover-casing"
                     type="line"
-                    filter={hoverFilter}
+                    filter={hover.filter}
                     layout={{ "line-cap": "round", "line-join": "round" }}
                     paint={{
                       "line-color": "#FFFFFF",
@@ -655,11 +634,11 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
                     }}
                   />
                 )}
-                {effectiveHover && (
+                {hover.routeId && (
                   <Layer
                     id="routes-hover-line"
                     type="line"
-                    filter={hoverFilter}
+                    filter={hover.filter}
                     layout={{ "line-cap": "round", "line-join": "round" }}
                     paint={{
                       "line-color": ROUTE_LINE_COLOR,
@@ -681,7 +660,9 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
                     paint={{
                       "line-color": "#1C2321",
                       "line-width": 5,
-                      "line-opacity": 0.9,
+                      // Dimmed while drawing: the old line is a reference to
+                      // trace, not the thing being edited.
+                      "line-opacity": drawing ? 0.25 : 0.9,
                     }}
                   />
                 )}
@@ -708,10 +689,10 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
 
             <StopMarkersLayer
               id="hover-stops"
-              stops={hoverStops}
+              stops={hover.stops}
               variant="route"
               visible={Boolean(
-                effectiveHover && hoverStops.length && !selectedRouteId,
+                hover.routeId && hover.stops.length && !selectedRouteId,
               )}
               onLine
             />
@@ -722,11 +703,14 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
               visible={selectedStops.length > 0}
               onLine
             />
+
+            <ShapeDrawLayer />
           </MapGl>
         </div>
         <div className="mt-2 text-[11.5px] text-[#7E9182]">
-          Click a route line to select it, then manage its closure in the
-          service panel
+          {drawing
+            ? "Click to place a point · right-click a point to remove it · Esc to cancel"
+            : "Click a route line to select it, or right-click it to edit its shape"}
         </div>
       </div>
     </div>

@@ -409,6 +409,11 @@ model ShapeOverride {
   waypoints   Json
   /// The snapped LineString actually drawn and exported.
   geojson     Json
+  /// The feed's own geometry, captured on the FIRST edit only. Saving mirrors
+  /// onto Shape.geojson in place, so without this "reset to feed shape" would
+  /// have nothing to restore short of a full reseed. Null for rows written
+  /// before this column existed.
+  baseGeojson Json?
   editedById  String
   editedBy    User     @relation(fields: [editedById], references: [id])
   editedAt    DateTime @updatedAt

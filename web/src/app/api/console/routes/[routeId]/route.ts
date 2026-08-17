@@ -7,6 +7,8 @@ import type {
   RouteEditorDetail,
   RouteStopRow,
   RouteTripRow,
+  ShapeOverrideSummary,
+  ShapeWaypoint,
 } from "@/types/console";
 
 /**
@@ -42,7 +44,7 @@ export async function GET(
     return Response.json({ error: "Route not found" }, { status: 404 });
   }
 
-  const [override, trips, tripOverrides] = await Promise.all([
+  const [override, trips, tripOverrides, shapeOverrides] = await Promise.all([
     prisma.routeOverride.findUnique({ where: { routeId } }),
     prisma.trip.findMany({
       where: { routeId },
@@ -72,8 +74,31 @@ export async function GET(
     prisma.tripOverride.findMany({
       select: { tripId: true, blockId: true },
     }),
+    // Waypoints, not the snapped line: reopening the editor has to offer the
+    // handful of decisions the operator made, not the 200 points they produced.
+    prisma.shapeOverride.findMany({
+      where: { routeId },
+      select: {
+        directionId: true,
+        waypoints: true,
+        baseGeojson: true,
+        editedAt: true,
+        editedBy: { select: { name: true } },
+      },
+    }),
   ]);
   const blockByTrip = new Map(tripOverrides.map((t) => [t.tripId, t.blockId]));
+  const shapeByDirection = new Map(
+    shapeOverrides.map((s) => [
+      s.directionId,
+      {
+        waypoints: (s.waypoints ?? []) as unknown as ShapeWaypoint[],
+        editedByName: s.editedBy.name,
+        editedAt: s.editedAt.toISOString(),
+        canReset: s.baseGeojson !== null,
+      } satisfies ShapeOverrideSummary,
+    ]),
+  );
 
   // One representative trip per direction — trips in a direction share a stop
   // pattern, and the editor edits the pattern, not the individual runs.
@@ -125,6 +150,7 @@ export async function GET(
       shapePoints: coords?.length ?? 0,
       tripCount: tripCounts.get(dir) ?? 0,
       stopCount: trip.stopTimes.length,
+      shapeOverride: shapeByDirection.get(dir) ?? null,
     });
     stopsByDirection[dir] = trip.stopTimes.map((st) => ({
       id: st.stop.id,

@@ -14,6 +14,7 @@ const TABS: { id: RouteEditorTab; label: string }[] = [
   { id: "details", label: "Details" },
   { id: "stops", label: "Stops" },
   { id: "trips", label: "Trips" },
+  { id: "shapes", label: "Shapes" },
   { id: "service", label: "Service" },
 ];
 

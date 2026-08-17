@@ -1,7 +1,31 @@
 import type { OperatorCode } from "@/lib/operators";
 
 /** Tabs on a selected route in the console. Mirrors the GTFS-X tab set. */
-export type RouteEditorTab = "details" | "stops" | "trips" | "service";
+export type RouteEditorTab =
+  | "details"
+  | "stops"
+  | "trips"
+  | "shapes"
+  | "service";
+
+/** One operator-placed point on a drawn shape. */
+export interface ShapeWaypoint {
+  lat: number;
+  lon: number;
+}
+
+/**
+ * An operator-drawn shape, as the editor reopens it. The waypoints — not the
+ * snapped vertices — are what the editor puts back on the map: they are the
+ * handful of decisions behind a couple of hundred points.
+ */
+export interface ShapeOverrideSummary {
+  waypoints: ShapeWaypoint[];
+  editedByName: string | null;
+  editedAt: string;
+  /** False for rows written before the feed geometry was captured. */
+  canReset: boolean;
+}
 
 /**
  * One direction of a route, as the editor sees it. `headsign` is what riders
@@ -14,6 +38,8 @@ export interface RouteDirection {
   shapePoints: number;
   tripCount: number;
   stopCount: number;
+  /** Null when this direction still carries the feed's own geometry. */
+  shapeOverride: ShapeOverrideSummary | null;
 }
 
 /** Minimal stop shape for pickers and summaries. */

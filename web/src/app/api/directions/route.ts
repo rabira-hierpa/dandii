@@ -1,5 +1,9 @@
 import type { NextRequest } from "next/server";
-import { closedWindow, type ClosureRange } from "@/lib/closures";
+import {
+  resolveClosedWindow,
+  type ClosureRange,
+  type TripStop,
+} from "@/lib/closures";
 import { findDirectRoutes, type DirectionsAnchor } from "@/lib/directions";
 import { OPERATOR_CODES, type OperatorCode } from "@/lib/operators";
 import { planTransferJourneys } from "@/lib/otp-fallback";
@@ -74,6 +78,25 @@ async function skippedStopNameSet(
   const names = new Set<string>();
   if (skipped.length === 0) return names;
 
+  // Boundary coordinates, so a closure entered against one direction still
+  // resolves on the canonical trip. Matching by id alone failed outright here
+  // whenever the two differed, and then nothing was filtered at all.
+  const boundaryIds = [
+    ...new Set(
+      skipped.flatMap((c) =>
+        [c.fromStopId, c.toStopId].filter((s): s is string => Boolean(s)),
+      ),
+    ),
+  ];
+  const anchors = new Map(
+    (
+      await prisma.stop.findMany({
+        where: { id: { in: boundaryIds } },
+        select: { id: true, lat: true, lon: true },
+      })
+    ).map((s) => [s.id, { lat: s.lat, lon: s.lon }]),
+  );
+
   for (const c of skipped) {
     if (!c.fromStopId || !c.toStopId) continue;
     const trip = await prisma.trip.findFirst({
@@ -82,7 +105,9 @@ async function skippedStopNameSet(
       select: {
         stopTimes: {
           orderBy: { sequence: "asc" },
-          select: { stop: { select: { id: true, name: true } } },
+          select: {
+            stop: { select: { id: true, name: true, lat: true, lon: true } },
+          },
         },
       },
     });
@@ -93,8 +118,15 @@ async function skippedStopNameSet(
       fromStopId: c.fromStopId,
       toStopId: c.toStopId,
     };
-    const seqById = new Map(stopNames.map((s, i) => [s.id, i]));
-    const w = closedWindow(range, seqById);
+    // Sequence is the array index here, because the window is used to slice
+    // this list rather than to compare against stop_time sequences.
+    const stops: TripStop[] = stopNames.map((s, i) => ({
+      id: s.id,
+      sequence: i,
+      lat: s.lat,
+      lon: s.lon,
+    }));
+    const w = resolveClosedWindow(range, stops, undefined, anchors);
     if (!w) continue;
     for (const s of stopNames.slice(w.start, w.end + 1)) {
       names.add(s.name.trim().toLowerCase());

@@ -6,15 +6,17 @@
 - [ ] Unit/integration tests for fare-proposal action guards (dedup, rate limit, double-decision)
 - [ ] Playwright authenticated wedge: submit → approve → fare on sheet → export
 
-## P1 — Planner ignores direction on partial closures (found 2026-08-12)
+## ~~P1 — Planner ignores direction on partial closures~~ FIXED 2026-08-18
 
-`isPairClosed` matches closures by stop id, but 406 of the 444 two-direction
-routes share NO stop ids between their directions. So closing a stretch almost
-certainly blocks only the direction whose stop ids the operator picked and
-leaves the return journey planning as if the road were open. Unverified at
-runtime — the map path was fixed in T0 by falling back to geometry, and the
-planner needs the same treatment (or a stop-cluster concept, which would also
-fix search grouping and the T3b cascade).
+Confirmed against the dev database: **406 of 444** two-direction routes (91.4%)
+share no stop ids between directions, and zero share all of them. A closure
+entered against outbound stops left the return journey planning straight through
+the blocked road.
+
+Fixed by resolving the closed window by position instead of by id
+(`resolveClosedWindow` in `lib/closures.ts`, 150 m snap tolerance), the same
+treatment the map got in T0. 8 tests. A stop-cluster concept would still be the
+better long-term answer and would also fix search grouping and the T3b cascade.
 
 ## P2 — Deferred from partial-closures autoplan (2026-08-07)
 

@@ -21,7 +21,13 @@
 import length from "@turf/length";
 import { lineString } from "@turf/helpers";
 import { decodePolyline } from "@/components/map/polyline";
-import { isPairClosed, type ClosureRange } from "@/lib/closures";
+import {
+  CLOSURE_SNAP_TOLERANCE_M,
+  isPairBlocked,
+  resolveClosedWindow,
+  type ClosureRange,
+  type TripStop,
+} from "@/lib/closures";
 import type {
   DirectionsAnchor,
   DirectRoute,
@@ -264,6 +270,72 @@ export interface DirectionsResult {
  * Find single-seat rides from `origin` to `destination`, operator-ranked.
  * `operators`, when non-empty, restricts results to those operator codes.
  */
+
+/**
+ * Trip calls and boundary coordinates needed to place a closure on a trip.
+ *
+ * A closure stores two stop ids, and looking them up directly resolves on one
+ * direction only: 406 of the 444 two-direction routes in the feed share NO stop
+ * ids between their directions, because each side of a road is its own stop. A
+ * closure entered against outbound stops therefore left the return journey
+ * planning straight through the blocked stretch. Resolving by position fixes
+ * that, and costs one wider query paid only while a closure is active.
+ */
+async function loadClosureGeometry(
+  candidateTripIds: string[],
+  activeClosures: { fromStopId: string | null; toStopId: string | null }[],
+): Promise<{
+  stopsByTrip: Map<string, TripStop[]>;
+  anchors: Map<string, { lat: number; lon: number }>;
+}> {
+  const stopsByTrip = new Map<string, TripStop[]>();
+  const anchors = new Map<string, { lat: number; lon: number }>();
+
+  const boundaryStopIds = [
+    ...new Set(
+      activeClosures.flatMap((c) =>
+        [c.fromStopId, c.toStopId].filter((s): s is string => Boolean(s)),
+      ),
+    ),
+  ];
+  const tripIds = [...new Set(candidateTripIds)];
+  if (boundaryStopIds.length === 0 || tripIds.length === 0) {
+    return { stopsByTrip, anchors };
+  }
+
+  const [callRows, boundaryStops] = await Promise.all([
+    prisma.$queryRaw<
+      {
+        tripId: string;
+        stopId: string;
+        sequence: number;
+        lat: number;
+        lon: number;
+      }[]
+    >`
+      SELECT st."tripId" AS "tripId", st."stopId" AS "stopId",
+             st.sequence AS "sequence", s.lat AS "lat", s.lon AS "lon"
+      FROM stop_time st
+      JOIN stop s ON s.id = st."stopId"
+      WHERE st."tripId" = ANY(${tripIds})
+    `,
+    prisma.stop.findMany({
+      where: { id: { in: boundaryStopIds } },
+      select: { id: true, lat: true, lon: true },
+    }),
+  ]);
+
+  for (const b of boundaryStops) {
+    anchors.set(b.id, { lat: b.lat, lon: b.lon });
+  }
+  for (const c of callRows) {
+    const list = stopsByTrip.get(c.tripId) ?? [];
+    list.push({ id: c.stopId, sequence: c.sequence, lat: c.lat, lon: c.lon });
+    stopsByTrip.set(c.tripId, list);
+  }
+  return { stopsByTrip, anchors };
+}
+
 export async function findDirectRoutes(
   origin: DirectionsAnchor,
   destination: DirectionsAnchor,
@@ -327,38 +399,24 @@ export async function findDirectRoutes(
       closuresByRoute.set(c.routeId, list);
     }
 
-    // Sequence numbers of every closure boundary stop, per candidate trip —
-    // a closed range is stored as stop ids so it resolves on both directions.
-    const boundaryStopIds = [
-      ...new Set(
-        activeClosures.flatMap((c) =>
-          [c.fromStopId, c.toStopId].filter((s): s is string => Boolean(s)),
-        ),
-      ),
-    ];
-    const seqByTrip = new Map<string, Map<string, number>>();
-    if (boundaryStopIds.length > 0) {
-      const tripIds = [...new Set(rows.map((r) => r.tripId))];
-      const boundaryRows = await prisma.$queryRaw<
-        { tripId: string; stopId: string; sequence: number }[]
-      >`
-        SELECT st."tripId" AS "tripId", st."stopId" AS "stopId",
-               st.sequence AS "sequence"
-        FROM stop_time st
-        WHERE st."tripId" = ANY(${tripIds}) AND st."stopId" = ANY(${boundaryStopIds})
-      `;
-      for (const b of boundaryRows) {
-        const m = seqByTrip.get(b.tripId) ?? new Map<string, number>();
-        m.set(b.stopId, b.sequence);
-        seqByTrip.set(b.tripId, m);
-      }
-    }
+    const { stopsByTrip, anchors } = await loadClosureGeometry(
+      rows.filter((r) => closuresByRoute.has(r.routeId)).map((r) => r.tripId),
+      activeClosures,
+    );
 
     openRows = rows.filter((row) => {
       const closures = closuresByRoute.get(row.routeId);
       if (!closures) return true;
-      const seqMap = seqByTrip.get(row.tripId) ?? new Map<string, number>();
-      return !isPairClosed(closures, seqMap, row.boardSeq, row.alightSeq);
+      const stops = stopsByTrip.get(row.tripId) ?? [];
+      // openRows keeps what a rider can still use, so this is the negation.
+      return !closures.some((c) =>
+        isPairBlocked(
+          c,
+          resolveClosedWindow(c, stops, CLOSURE_SNAP_TOLERANCE_M, anchors),
+          row.boardSeq,
+          row.alightSeq,
+        ),
+      );
     });
     if (openRows.length === 0) return [];
   }

@@ -19,6 +19,22 @@
       their duplicates. By design: the pipeline is built, operators fill the
       rest in from the Stops tab.
 
+## P1 — Console Amharic, remaining (2026-08-19)
+
+Shell, nav, all seven page headers, the Members/Invitations headers and the
+Stops-tab create form are converted. Page **bodies** are not — roughly 110 of
+the ~148 strings. Highest traffic first:
+- [ ] network page body (search box, "Currently closed", filter chips, hints)
+- [ ] fares page body (table headers, tier controls, History disclosure)
+- [ ] proposals / feeds / analytics page bodies
+- [ ] members-table and invitations-panel bodies (headers, buttons, statuses)
+- [ ] route editor tabs: details, trips, service, shapes
+- [ ] **Native review of every Amharic string already added.** Mine is a
+      draft. The operational vocabulary is where the risk is — የፊድ ስሪቶች
+      (feed versions), ኬክሮስ/ኬንትሮስ (lat/lon), ፌርማታ (stop), ታሪፍ (fare).
+      docs/rewards-and-amharic-design.md §4 called this the real gate on the
+      feature, and it still is.
+
 ## P1 — Deferred from fare-registry plan (ship 2026-07-23)
 
 - [ ] Console fare-history UI (FareChangeLog exists; no console surface yet)

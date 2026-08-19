@@ -2,6 +2,26 @@
 
 All notable changes to Dandii are documented in this file.
 
+## [1.4.0] - 2026-08-19
+
+### Added
+- Console invitations are scoped to an operator. Inviting someone to run
+  Anbessa's routes now grants exactly that: `lib/operator-scope.ts` checks
+  every feed-edit mutation against the invitee's operator, refuses routes
+  assigned elsewhere or to nobody, and keeps shared interchanges — a stop
+  more than one operator calls at — with the admins.
+- Amharic stop names are published. The exported feed carries a GTFS
+  `translations.txt` built from the names operators enter in the console,
+  keyed by `record_id` so two stops sharing a name stay distinct.
+- Fare history in the console: who changed a route's fare, from what to
+  what, and whether it came from a rider proposal or a console edit.
+
+### Fixed
+- Role changes in Settings no longer go through better-auth's `setRole`,
+  which knew nothing about the operator column — demoting an admin to
+  route-operator through it produced a route-operator with no operator,
+  which is to say one with the run of the whole network.
+
 ## [1.3.0] — 2026-08-17
 
 ### Added

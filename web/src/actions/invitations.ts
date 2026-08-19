@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { ZodError } from "zod";
 import { sendEmail } from "@/lib/email";
+import { OPERATOR_META } from "@/lib/operators";
 import { prisma } from "@/lib/prisma";
 import { ASSIGNABLE_ROLES, type AppRole } from "@/lib/permissions";
 import { getSession, requirePermission } from "@/lib/session";
@@ -61,12 +62,19 @@ export async function createInvitation(input: InvitationCreateInput) {
 
   const existingUser = await prisma.user.findUnique({
     where: { email: data.email },
-    select: { id: true, role: true },
+    select: { id: true, role: true, operatorCode: true },
   });
-  if (existingUser && existingUser.role === data.role) {
+  const scope = data.operatorCode ?? null;
+  if (
+    existingUser &&
+    existingUser.role === data.role &&
+    existingUser.operatorCode === scope
+  ) {
     return {
       ok: false as const,
-      error: `${data.email} already has the ${data.role} role`,
+      error: scope
+        ? `${data.email} already operates ${OPERATOR_META[scope].name}`
+        : `${data.email} already has the ${data.role} role`,
     };
   }
 
@@ -82,18 +90,22 @@ export async function createInvitation(input: InvitationCreateInput) {
     data: {
       email: data.email,
       role: data.role,
+      operatorCode: scope,
       token,
       invitedById: session.user.id,
       expiresAt: new Date(Date.now() + INVITE_TTL_DAYS * 24 * 60 * 60 * 1000),
     },
   });
 
+  const asWhat = scope
+    ? `${data.role} for ${OPERATOR_META[scope].name}`
+    : data.role;
   const link = inviteLink(token);
   const { sent } = await sendEmail({
     to: data.email,
     subject: "You're invited to the Dandii console",
-    text: `${session.user.name} invited you to join the Dandii operations console as ${data.role}.\n\nAccept: ${link}\n\nThis link expires in ${INVITE_TTL_DAYS} days.`,
-    html: `<p>${session.user.name} invited you to join the Dandii operations console as <strong>${data.role}</strong>.</p><p><a href="${link}">Accept the invitation</a></p><p>This link expires in ${INVITE_TTL_DAYS} days.</p>`,
+    text: `${session.user.name} invited you to join the Dandii operations console as ${asWhat}.\n\nAccept: ${link}\n\nThis link expires in ${INVITE_TTL_DAYS} days.`,
+    html: `<p>${session.user.name} invited you to join the Dandii operations console as <strong>${asWhat}</strong>.</p><p><a href="${link}">Accept the invitation</a></p><p>This link expires in ${INVITE_TTL_DAYS} days.</p>`,
   });
 
   revalidatePath("/settings/invitations");
@@ -182,7 +194,7 @@ export async function acceptInvitation(input: InvitationTokenInput) {
   await prisma.$transaction([
     prisma.user.update({
       where: { id: session.user.id },
-      data: { role: invitation.role },
+      data: { role: invitation.role, operatorCode: invitation.operatorCode },
     }),
     prisma.invitation.update({
       where: { id: invitation.id },
@@ -196,5 +208,11 @@ export async function acceptInvitation(input: InvitationTokenInput) {
 
   revalidatePath("/settings/invitations");
   revalidatePath("/settings/members");
-  return { ok: true as const, data: { role: invitation.role as AppRole } };
+  return {
+    ok: true as const,
+    data: {
+      role: invitation.role as AppRole,
+      operatorCode: invitation.operatorCode,
+    },
+  };
 }

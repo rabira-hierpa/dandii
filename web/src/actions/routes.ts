@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { createRouteRow } from "@/lib/route-create";
+import { denyOutOfScope, getUserOperatorCode } from "@/lib/operator-scope";
 import { requirePermission } from "@/lib/session";
 
 const routeFieldsSchema = z.object({
@@ -59,6 +60,28 @@ export async function updateRoute(input: z.infer<typeof updateRouteSchema>) {
   const session = await requirePermission({ route: ["update"] });
   const data = updateRouteSchema.parse(input);
 
+  const denied = await denyOutOfScope(session.user.id, {
+    routeId: data.routeId,
+  });
+  if (denied) return denied;
+
+  // Handing a route to a different operator is an admin act. A scoped user
+  // may edit their own routes freely, but moving one across the boundary —
+  // in either direction — is the boundary itself, so it isn't theirs to move.
+  const scope = await getUserOperatorCode(session.user.id);
+  if (scope !== null) {
+    const current = await prisma.routeAssignment.findUnique({
+      where: { routeId: data.routeId },
+      select: { operatorId: true },
+    });
+    if ((data.operatorId ?? null) !== (current?.operatorId ?? null)) {
+      return {
+        ok: false as const,
+        error: "Only an admin can reassign a route to another operator",
+      };
+    }
+  }
+
   await prisma.$transaction(async (tx) => {
     await tx.route.update({
       where: { id: data.routeId },
@@ -95,6 +118,15 @@ export async function updateRoute(input: z.infer<typeof updateRouteSchema>) {
 export async function bulkAssignRoutes(input: z.infer<typeof bulkAssignSchema>) {
   const session = await requirePermission({ route: ["assign"] });
   const { routeIds, operatorId } = bulkAssignSchema.parse(input);
+
+  // Bulk assignment is how routes change hands, so it stays with the roles
+  // that have no operator of their own to favour.
+  if ((await getUserOperatorCode(session.user.id)) !== null) {
+    return {
+      ok: false as const,
+      error: "Only an admin can reassign routes between operators",
+    };
+  }
 
   const operator = await prisma.operator.findUnique({
     where: { id: operatorId },

@@ -21,6 +21,13 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   role          String?
+  /// Per-operator scope for console editors. Null means network-wide, which
+  /// is what every role except `route-operator` gets. Non-null pins every
+  /// feed edit this user makes to routes assigned to that operator — see
+  /// `lib/operator-scope.ts`. Read from the DB on each mutation rather than
+  /// carried in the session, so revoking a scope takes effect at once
+  /// instead of when the session cookie happens to expire.
+  operatorCode  OperatorCode?
   banned        Boolean?  @default(false)
   banReason     String?
   banExpires    DateTime?
@@ -761,6 +768,11 @@ model Invitation {
   /// One of AppRole (@/lib/permissions). Not a DB enum: it must stay in sync
   /// with the access-control statement, which is TypeScript, not SQL.
   role   String
+  /// Which operator this invitation scopes the invitee to. Required for
+  /// `route-operator`, null for the network-wide roles (super-admin, admin,
+  /// maintainer) — enforced in `invitation-schema.ts`, not by the DB, because
+  /// the role column is TypeScript-owned too.
+  operatorCode OperatorCode?
   token  String @unique
 
   status InvitationStatus @default(PENDING)

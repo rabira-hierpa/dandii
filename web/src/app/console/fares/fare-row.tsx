@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { FareHistory } from "@/components/console/fare-history";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
 import { Plus, Trash01 } from "@untitledui/icons";
@@ -45,6 +46,9 @@ export function FareRow({
 }) {
   const [isPending, startTransition] = useTransition();
   const [saved, setSaved] = useState(false);
+  // Local and disposable: nothing outside this row reads whether its history
+  // is open, and the history itself is server data, not state.
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
 
   const form = useForm<FareInput>({
@@ -281,6 +285,14 @@ export function FareRow({
         {saved && (
           <span className="text-xs font-semibold text-[#15803D]">Saved</span>
         )}
+        <button
+          type="button"
+          onClick={() => setHistoryOpen((open) => !open)}
+          aria-expanded={historyOpen}
+          className="cursor-pointer rounded-lg border border-[#D6DCD0] px-3 py-2 text-[12.5px] font-semibold text-[#3D4A3F] hover:bg-[#F4F6F2]"
+        >
+          {historyOpen ? "Hide history" : "History"}
+        </button>
         {!readOnly && (
           <button
             type="submit"
@@ -291,6 +303,12 @@ export function FareRow({
           </button>
         )}
       </div>
+
+      {historyOpen && (
+        <div className="w-full border-t border-[#EEF1EA] pt-2">
+          <FareHistory routeId={data.routeId} />
+        </div>
+      )}
     </form>
   );
 }

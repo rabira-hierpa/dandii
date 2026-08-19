@@ -1,3 +1,4 @@
+import { getTranslations } from "next-intl/server";
 import { ConsolePageHeader } from "@/components/console/page-header";
 import { CONSOLE_ROLES } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
@@ -7,6 +8,7 @@ import { FeedVersionsList, type FeedVersionRow } from "./feed-versions-list";
 export const dynamic = "force-dynamic";
 
 export default async function FeedVersionsPage() {
+  const t = await getTranslations("console");
   await requireRole(CONSOLE_ROLES);
 
   const [versions, pendingProposals, fareCount, lastVersion] = await Promise.all([
@@ -69,8 +71,8 @@ export default async function FeedVersionsPage() {
   return (
     <>
       <ConsolePageHeader
-        title="Feed Versions"
-        subtitle="Versioned GTFS exports — approved fares overlaid on the base feed"
+        title={t("feeds.title")}
+        subtitle={t("feeds.subtitle")}
       />
       <FeedVersionsList
         rows={rows}

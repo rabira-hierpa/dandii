@@ -1,9 +1,11 @@
 import { SETTINGS_ROLES } from "@/lib/permissions";
+import { getTranslations } from "next-intl/server";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/session";
 import { InvitationsPanel } from "./invitations-panel";
 
 export default async function InvitationsSettingsPage() {
+  const t = await getTranslations("settings");
   const { role } = await requireRole(SETTINGS_ROLES);
 
   const invitations = await prisma.invitation.findMany({
@@ -13,6 +15,7 @@ export default async function InvitationsSettingsPage() {
       id: true,
       email: true,
       role: true,
+      operatorCode: true,
       status: true,
       expiresAt: true,
       createdAt: true,
@@ -22,7 +25,7 @@ export default async function InvitationsSettingsPage() {
 
   return (
     <div>
-      <h1 className="text-lg font-bold text-[#1C2321]">Invitations</h1>
+      <h1 className="text-lg font-bold text-[#1C2321]">{t("invitations.title")}</h1>
       <p className="mt-1 text-[13px] text-[#5C6B5E]">
         Invite someone to the console by email. They accept by signing in with
         Google using that same address — the role is granted the moment they

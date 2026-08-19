@@ -5,6 +5,7 @@ import {
   applyStopOverridesToCsv,
   applyStopTimeOrderToCsv,
   applyTripOverridesToCsv,
+  translationsCsv,
 } from "./gtfs-overrides";
 
 /** Shaped like the vendored DT4A feed, including a comma inside a long name. */
@@ -514,5 +515,45 @@ describe("applyShapeOverridesToCsv", () => {
         new Map([["s1", [[38.7, 9.0], [38.71, 9.01]] as [number, number][]]]),
       ),
     ).toBe(STOPS_CSV);
+  });
+});
+
+describe("translationsCsv", () => {
+  it("writes a GTFS-Translations row per stop", () => {
+    const csv = translationsCsv([
+      { stopId: "1001", nameAm: "መገናኛ" },
+      { stopId: "1002", nameAm: "ጦር ኃይሎች" },
+    ]);
+    const lines = csv.trim().split("\n");
+
+    expect(lines[0]).toBe(
+      "table_name,field_name,language,translation,record_id",
+    );
+    expect(lines[1]).toBe("stops,stop_name,am,መገናኛ,1001");
+    expect(lines).toHaveLength(3);
+  });
+
+  it("keys by record_id so two stops sharing a name stay distinct", () => {
+    // 2,271 Addis stops carry 858 distinct names — the field_value form of
+    // the extension would collapse every "Megenagna" into one row.
+    const csv = translationsCsv([
+      { stopId: "1001", nameAm: "መገናኛ" },
+      { stopId: "1002", nameAm: "መገናኛ" },
+    ]);
+
+    expect(csv).toContain(",1001\n");
+    expect(csv).toContain(",1002\n");
+  });
+
+  it("returns nothing when no stop is translated, so no empty file ships", () => {
+    expect(translationsCsv([])).toBe("");
+  });
+
+  it("quotes a translation containing a comma", () => {
+    const csv = translationsCsv([
+      { stopId: "1001", nameAm: "መገናኛ, ማዞሪያ" },
+    ]);
+
+    expect(csv).toContain('"መገናኛ, ማዞሪያ"');
   });
 });

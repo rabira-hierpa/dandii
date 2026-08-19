@@ -1,3 +1,4 @@
+import { getTranslations } from "next-intl/server";
 import { ConsolePageHeader } from "@/components/console/page-header";
 import type { OperatorCode } from "@/lib/operators";
 import { CONSOLE_ROLES } from "@/lib/permissions";
@@ -33,6 +34,7 @@ function fareKey(fare: FareShape): string {
 }
 
 export default async function ProposalsReviewPage() {
+  const t = await getTranslations("console");
   await requireRole(CONSOLE_ROLES);
 
   const proposals = await prisma.fareProposal.findMany({
@@ -173,8 +175,8 @@ export default async function ProposalsReviewPage() {
   return (
     <>
       <ConsolePageHeader
-        title="Fare Review"
-        subtitle="Rider-submitted fare corrections awaiting approval"
+        title={t("proposals.title")}
+        subtitle={t("proposals.subtitle")}
         action={
           totalPending > 0 ? (
             <span className="shrink-0 rounded-full bg-[#FEF3C7] px-3 py-1 text-[12.5px] font-semibold text-[#92400E]">

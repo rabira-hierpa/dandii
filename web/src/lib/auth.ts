@@ -16,6 +16,14 @@ export const auth = betterAuth({
   database: prismaAdapter(prisma, {
     provider: "postgresql",
   }),
+  user: {
+    additionalFields: {
+      // Surfaced so the members list can show and set a member's operator.
+      // `input: false` keeps it out of sign-up and profile updates — the
+      // scope is granted by an invitation or an admin, never self-declared.
+      operatorCode: { type: "string", required: false, input: false },
+    },
+  },
   socialProviders: {
     google: {
       clientId: process.env.GOOGLE_CLIENT_ID as string,

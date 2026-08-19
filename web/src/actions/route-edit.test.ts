@@ -10,6 +10,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  */
 
 const prisma = vi.hoisted(() => ({
+  user: { findUnique: vi.fn() },
   route: {
     findUnique: vi.fn(),
     create: vi.fn(),
@@ -17,7 +18,7 @@ const prisma = vi.hoisted(() => ({
     delete: vi.fn(),
   },
   routeOverride: { upsert: vi.fn(), deleteMany: vi.fn() },
-  routeAssignment: { upsert: vi.fn() },
+  routeAssignment: { upsert: vi.fn(), findMany: vi.fn() },
   operator: { findUnique: vi.fn() },
   agency: { findFirst: vi.fn() },
 }));
@@ -33,6 +34,7 @@ const { createRoute, deleteRoute, duplicateRoute, updateRouteFields } =
 
 beforeEach(() => {
   vi.clearAllMocks();
+  prisma.user.findUnique.mockResolvedValue({ role: "admin", operatorCode: null });
   prisma.route.findUnique.mockResolvedValue({ id: "route-1", origin: "FEED" });
   prisma.route.create.mockResolvedValue({});
   prisma.route.update.mockResolvedValue({});
@@ -281,5 +283,79 @@ describe("deleteRoute", () => {
 
     expect(result.ok).toBe(false);
     expect(prisma.route.findUnique).not.toHaveBeenCalled();
+  });
+});
+
+describe("operator scope", () => {
+  /** A dispatcher invited to run Anbessa, looking at an LRT route. */
+  function anbessaUserEditingLrtRoute() {
+    prisma.user.findUnique.mockResolvedValue({
+      role: "route-operator",
+      operatorCode: "ANBESSA",
+    });
+    prisma.routeAssignment.findMany.mockResolvedValue([
+      { routeId: "route-1", operator: { code: "LRT" } },
+    ]);
+  }
+
+  it("refuses to edit a route belonging to another operator", async () => {
+    anbessaUserEditingLrtRoute();
+    const result = await updateRouteFields({
+      routeId: "route-1",
+      shortName: "hijacked",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(prisma.routeOverride.upsert).not.toHaveBeenCalled();
+  });
+
+  it("refuses to delete another operator's route", async () => {
+    anbessaUserEditingLrtRoute();
+    const result = await deleteRoute({ routeId: "route-1" });
+
+    expect(result.ok).toBe(false);
+    expect(prisma.route.delete).not.toHaveBeenCalled();
+    expect(prisma.route.update).not.toHaveBeenCalled();
+  });
+
+  it("refuses to duplicate another operator's route", async () => {
+    anbessaUserEditingLrtRoute();
+    const result = await duplicateRoute({ routeId: "route-1" });
+
+    expect(result.ok).toBe(false);
+    expect(prisma.route.create).not.toHaveBeenCalled();
+  });
+
+  it("refuses to file a new route under someone else's operator", async () => {
+    prisma.user.findUnique.mockResolvedValue({
+      role: "route-operator",
+      operatorCode: "ANBESSA",
+    });
+    const result = await createRoute({
+      shortName: "L9",
+      longName: "Somewhere",
+      type: 0,
+      operatorCode: "LRT",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(prisma.route.create).not.toHaveBeenCalled();
+  });
+
+  it("still lets that dispatcher edit their own operator's route", async () => {
+    prisma.user.findUnique.mockResolvedValue({
+      role: "route-operator",
+      operatorCode: "ANBESSA",
+    });
+    prisma.routeAssignment.findMany.mockResolvedValue([
+      { routeId: "route-1", operator: { code: "ANBESSA" } },
+    ]);
+    const result = await updateRouteFields({
+      routeId: "route-1",
+      shortName: "A1",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(prisma.routeOverride.upsert).toHaveBeenCalled();
   });
 });

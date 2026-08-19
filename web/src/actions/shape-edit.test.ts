@@ -9,6 +9,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  */
 
 const prisma = vi.hoisted(() => ({
+  user: { findUnique: vi.fn() },
   route: { findUnique: vi.fn(), update: vi.fn() },
   trip: { findMany: vi.fn() },
   shape: { findUnique: vi.fn(), updateMany: vi.fn() },
@@ -36,6 +37,7 @@ const input = { routeId: "route-1", directionId: 0, waypoints: [MESKEL, KAZANCHI
 
 beforeEach(() => {
   vi.clearAllMocks();
+  prisma.user.findUnique.mockResolvedValue({ role: "admin", operatorCode: null });
   prisma.route.findUnique.mockResolvedValue({ id: "route-1" });
   prisma.trip.findMany.mockResolvedValue([{ shapeId: "shape-1" }]);
   prisma.shape.findUnique.mockResolvedValue({ geojson: { type: "LineString" } });

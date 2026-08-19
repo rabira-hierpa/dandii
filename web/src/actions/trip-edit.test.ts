@@ -10,6 +10,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  */
 
 const prisma = vi.hoisted(() => ({
+  user: { findUnique: vi.fn() },
   trip: { findUnique: vi.fn(), update: vi.fn() },
   tripOverride: { upsert: vi.fn() },
 }));
@@ -24,6 +25,7 @@ const { updateTripFields } = await import("./trip-edit");
 
 beforeEach(() => {
   vi.clearAllMocks();
+  prisma.user.findUnique.mockResolvedValue({ role: "admin", operatorCode: null });
   prisma.trip.findUnique.mockResolvedValue({ id: "trip-1" });
   prisma.trip.update.mockResolvedValue({});
   prisma.tripOverride.upsert.mockResolvedValue({});

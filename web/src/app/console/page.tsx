@@ -1,3 +1,4 @@
+import { getTranslations } from "next-intl/server";
 import { ConsolePageHeader } from "@/components/console/page-header";
 import { OPERATOR_META, type OperatorCode } from "@/lib/operators";
 import { prisma } from "@/lib/prisma";
@@ -6,6 +7,7 @@ import { activeClosureFilter, getClosedRouteIds } from "@/lib/transit";
 export const dynamic = "force-dynamic";
 
 export default async function ConsoleOverviewPage() {
+  const t = await getTranslations("console");
   const now = new Date();
   const [operators, routeCount, stopCount, tripCount, closedIds, closures] =
     await Promise.all([
@@ -107,8 +109,8 @@ export default async function ConsoleOverviewPage() {
   return (
     <>
       <ConsolePageHeader
-        title="Agency Overview"
-        subtitle="Service providers across the hybrid network — bus, light rail, and paratransit"
+        title={t("overview.title")}
+        subtitle={t("overview.subtitle")}
       />
 
       <div className="mb-5 grid grid-cols-3 gap-4 max-lg:grid-cols-1">

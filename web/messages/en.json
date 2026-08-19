@@ -126,5 +126,100 @@
     "description": "The page you're looking for doesn't exist, or the route moved. Jump back to the live Addis transit map.",
     "searchRoutes": "Search routes",
     "needConsole": "Need the ops console?"
+  },
+  "console": {
+    "brand": "Addis Ababa Transit",
+    "tagline": "Network Operations Console",
+    "settings": "Settings",
+    "signOut": "Sign out",
+    "nav": {
+      "overview": "Agency Overview",
+      "routes": "Route Assignment",
+      "network": "Network Map",
+      "fares": "Fare Management",
+      "proposals": "Fare Review",
+      "feeds": "Feed Versions",
+      "analytics": "Analytics"
+    },
+    "overview": {
+      "title": "Agency Overview",
+      "subtitle": "Service providers across the hybrid network — bus, light rail, and paratransit"
+    },
+    "routes": {
+      "title": "Route Assignment",
+      "subtitle": "Map route_ids to operating agencies · changes apply across the console"
+    },
+    "network": {
+      "title": "Network Map",
+      "subtitle": "Corridor view of every route · close routes for public holidays or political events"
+    },
+    "fares": {
+      "title": "Fare Management",
+      "subtitle": "Flat and distance-based pricing in Ethiopian Birr (ETB)"
+    },
+    "proposals": {
+      "title": "Fare Review",
+      "subtitle": "Rider-submitted fare corrections awaiting approval"
+    },
+    "feeds": {
+      "title": "Feed Versions",
+      "subtitle": "Versioned GTFS exports — approved fares overlaid on the base feed"
+    },
+    "analytics": {
+      "title": "Analytics",
+      "subtitle": "Service supply, disruption, and fare structure across the network"
+    },
+    "stops": {
+      "createStop": "+ Create new stop",
+      "stopName": "Stop name",
+      "pickOnMap": "Pick on map",
+      "pickingHint": "Click the map… (Esc to cancel)",
+      "positionSet": "Position set from the map",
+      "outsideAddis": "That point is outside Addis Ababa. Click inside the city, or type the coordinates below.",
+      "latitude": "Latitude, e.g. 9.0104",
+      "longitude": "Longitude, e.g. 38.7612",
+      "create": "Create stop",
+      "creating": "Creating…",
+      "cancel": "Cancel"
+    }
+  },
+  "settings": {
+    "title": "Settings",
+    "nav": {
+      "profile": "Profile",
+      "members": "Members",
+      "invitations": "Invitations",
+      "system": "System"
+    },
+    "members": {
+      "title": "Members",
+      "subtitle": "Manage who can access the operations console and what they can do.",
+      "member": "Member",
+      "role": "Role",
+      "changeRole": "Change role",
+      "access": "Access",
+      "ban": "Ban",
+      "unban": "Unban",
+      "you": "You"
+    },
+    "invitations": {
+      "title": "Invitations",
+      "subtitle": "Invite someone to the console by email. They accept by signing in with Google using that same address — the role is granted the moment they do.",
+      "inviteSomeone": "Invite someone new",
+      "email": "Email",
+      "role": "Role",
+      "operator": "Operator",
+      "send": "Send invite",
+      "sending": "Sending…",
+      "sent": "Invitation sent.",
+      "noProvider": "No email provider is configured — share this link directly:",
+      "copy": "Copy",
+      "copied": "Copied",
+      "revoke": "Revoke",
+      "status": "Status",
+      "invitedBy": "Invited by",
+      "expires": "Expires",
+      "action": "Action"
+    }
   }
 }

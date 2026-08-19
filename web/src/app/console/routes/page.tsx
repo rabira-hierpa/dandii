@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { getTranslations } from "next-intl/server";
 import { ConsolePageHeader } from "@/components/console/page-header";
 import type { OperatorCode } from "@/lib/operators";
 import { OPERATOR_CODES } from "@/lib/operators";
@@ -18,6 +19,7 @@ export default async function RouteAssignmentPage({
 }: {
   searchParams: Promise<{ q?: string; operator?: string; page?: string }>;
 }) {
+  const t = await getTranslations("console");
   const { role } = await requireRole(CONSOLE_ROLES);
   const canAssign = role !== "maintainer";
   const canEdit = role !== "maintainer";
@@ -107,8 +109,8 @@ export default async function RouteAssignmentPage({
   return (
     <>
       <ConsolePageHeader
-        title="Route Assignment"
-        subtitle="Map route_ids to operating agencies · changes apply across the console"
+        title={t("routes.title")}
+        subtitle={t("routes.subtitle")}
         action={
           <a
             href={`/api/export/routes.csv${(() => {

@@ -1,4 +1,5 @@
 import { NetworkMap, type NetworkRoute } from "@/components/console/network-map";
+import { getTranslations } from "next-intl/server";
 import { ConsolePageHeader } from "@/components/console/page-header";
 import type { ClosureReasonValue, OperatorCode } from "@/lib/operators";
 import { CONSOLE_ROLES } from "@/lib/permissions";
@@ -9,6 +10,7 @@ import { activeClosureFilter } from "@/lib/transit";
 export const dynamic = "force-dynamic";
 
 export default async function NetworkMapPage() {
+  const t = await getTranslations("console");
   const { role } = await requireRole(CONSOLE_ROLES);
 
   const routes = await prisma.route.findMany({
@@ -60,8 +62,8 @@ export default async function NetworkMapPage() {
   return (
     <>
       <ConsolePageHeader
-        title="Network Map"
-        subtitle="Corridor view of every route · close routes for public holidays or political events"
+        title={t("network.title")}
+        subtitle={t("network.subtitle")}
       />
       <NetworkMap routes={networkRoutes} isMaintainer={role === "maintainer"} />
     </>

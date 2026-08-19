@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
+import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import {
   DndContext,
@@ -39,6 +40,7 @@ const inputClass =
   "rounded-lg border border-[#D6DCD0] bg-white px-2.5 py-2 text-[13px] font-normal text-[#1C2321] placeholder:text-[#9AA69C]";
 
 export function RouteStopsTab({ detail, onChanged }: RouteStopsTabProps) {
+  const t = useTranslations("console.stops");
   const router = useRouter();
   const directionId = useRouteEditorStore((s) => s.directionId);
   const setDirectionId = useRouteEditorStore((s) => s.setDirectionId);
@@ -241,7 +243,7 @@ export function RouteStopsTab({ detail, onChanged }: RouteStopsTabProps) {
           <input
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
-            placeholder="Stop name"
+            placeholder={t("stopName")}
             className={inputClass}
           />
           <div className="flex flex-wrap items-center gap-2">
@@ -256,32 +258,31 @@ export function RouteStopsTab({ detail, onChanged }: RouteStopsTabProps) {
                   : "border-[#D6DCD0] bg-white text-[#3D4A3F] hover:bg-[#F4F6F2]",
               )}
             >
-              {placing ? "Click the map… (Esc to cancel)" : "Pick on map"}
+              {placing ? t("pickingHint") : t("pickOnMap")}
             </button>
             {picked && !placing && (
               <span className="text-[11px] text-[#15803D]">
-                Position set from the map
+                {t("positionSet")}
               </span>
             )}
           </div>
           {outOfBounds && (
             <p className="text-[11px] text-[#B45309]">
-              That point is outside Addis Ababa. Click inside the city, or type
-              the coordinates below.
+              {t("outsideAddis")}
             </p>
           )}
           <div className="grid grid-cols-2 gap-2">
             <input
               value={newLat}
               onChange={(e) => setNewLat(e.target.value)}
-              placeholder="Latitude, e.g. 9.0104"
+              placeholder={t("latitude")}
               inputMode="decimal"
               className={inputClass}
             />
             <input
               value={newLon}
               onChange={(e) => setNewLon(e.target.value)}
-              placeholder="Longitude, e.g. 38.7612"
+              placeholder={t("longitude")}
               inputMode="decimal"
               className={inputClass}
             />
@@ -297,7 +298,7 @@ export function RouteStopsTab({ detail, onChanged }: RouteStopsTabProps) {
               disabled={isPending || newName.trim() === ""}
               className="cursor-pointer rounded-lg bg-[#1C2321] px-3 py-1.5 text-[12.5px] font-semibold text-white hover:bg-[#2C3531] disabled:opacity-50"
             >
-              {isPending ? "Creating…" : "Create stop"}
+              {isPending ? t("creating") : t("create")}
             </button>
             <button
               type="button"
@@ -307,7 +308,7 @@ export function RouteStopsTab({ detail, onChanged }: RouteStopsTabProps) {
               }}
               className="cursor-pointer text-[12.5px] font-medium text-[#5C6B5E] hover:underline"
             >
-              Cancel
+              {t("cancel")}
             </button>
           </div>
         </div>
@@ -317,7 +318,7 @@ export function RouteStopsTab({ detail, onChanged }: RouteStopsTabProps) {
           onClick={() => setCreating(true)}
           className="cursor-pointer rounded-lg border border-dashed border-[#C3CBBD] bg-white px-3 py-2 text-[12.5px] font-semibold text-[#3D4A3F] hover:bg-[#F8FAF6]"
         >
-          + Create new stop
+          {t("createStop")}
         </button>
       )}
 

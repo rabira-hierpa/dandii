@@ -5,6 +5,7 @@ import {
   HeadwayChart,
   OperatorRoutesChart,
 } from "@/components/console/charts";
+import { getTranslations } from "next-intl/server";
 import { ConsolePageHeader } from "@/components/console/page-header";
 import { computeNetworkAnalytics } from "@/lib/analytics";
 import { CONSOLE_ROLES } from "@/lib/permissions";
@@ -33,6 +34,7 @@ function ChartCard({
 }
 
 export default async function AnalyticsPage() {
+  const t = await getTranslations("console");
   await requireRole(CONSOLE_ROLES);
   const analytics = await computeNetworkAnalytics();
   const { kpis } = analytics;
@@ -70,8 +72,8 @@ export default async function AnalyticsPage() {
   return (
     <>
       <ConsolePageHeader
-        title="Analytics"
-        subtitle="Service supply, disruption, and fare structure across the network"
+        title={t("analytics.title")}
+        subtitle={t("analytics.subtitle")}
         action={
           <div className="flex shrink-0 flex-wrap gap-2">
             <a

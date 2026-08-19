@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { getTranslations } from "next-intl/server";
 import { ConsolePageHeader } from "@/components/console/page-header";
 import type { OperatorCode } from "@/lib/operators";
 import { OPERATOR_CODES } from "@/lib/operators";
@@ -18,6 +19,7 @@ export default async function FareManagementPage({
 }: {
   searchParams: Promise<{ q?: string; operator?: string; page?: string }>;
 }) {
+  const t = await getTranslations("console");
   const { role } = await requireRole(CONSOLE_ROLES);
   const readOnly = role === "maintainer";
 
@@ -113,8 +115,8 @@ export default async function FareManagementPage({
   return (
     <>
       <ConsolePageHeader
-        title="Fare Management"
-        subtitle="Flat and distance-based pricing in Ethiopian Birr (ETB)"
+        title={t("fares.title")}
+        subtitle={t("fares.subtitle")}
         action={
           <a
             href="/api/export/fares.csv"

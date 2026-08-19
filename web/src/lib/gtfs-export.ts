@@ -15,6 +15,8 @@ import {
   applyStopOverridesToCsv,
   applyShapeOverridesToCsv,
   applyStopTimeOrderToCsv,
+  translationsCsv,
+  type StopTranslation,
   applyTripOverridesToCsv,
 } from "@/lib/gtfs-overrides";
 import { hasNoOverrides, type FeedOverrides } from "@/types/gtfs";
@@ -67,6 +69,9 @@ const REPLACED = new Set([
   "feed_info.txt",
   "fare_attributes.txt",
   "fare_rules.txt",
+  // Regenerated from the console's Amharic names rather than copied: the
+  // vendored DT4A feed ships no translations at all.
+  "translations.txt",
 ]);
 
 /**
@@ -202,6 +207,40 @@ async function loadFeedOverrides(): Promise<FeedOverrides> {
 }
 
 /** Copy the base feed + overlay the three generated files into `filePath`. */
+/**
+ * Effective Amharic names: the console's correction where one exists,
+ * otherwise whatever the seed loaded. Tombstoned stops are left out — they
+ * are not in the exported `stops.txt`, and a translation naming a stop the
+ * feed lacks is a foreign-key violation.
+ */
+async function loadStopTranslations(): Promise<StopTranslation[]> {
+  const [stops, overrides] = await Promise.all([
+    prisma.stop.findMany({
+      where: { nameAm: { not: null } },
+      select: { id: true, nameAm: true },
+    }),
+    prisma.stopOverride.findMany({
+      where: { nameAm: { not: null } },
+      select: { stopId: true, nameAm: true, deletedAt: true },
+    }),
+  ]);
+
+  const byStop = new Map<string, string>();
+  for (const stop of stops) byStop.set(stop.id, stop.nameAm!);
+  for (const override of overrides) {
+    if (override.deletedAt) byStop.delete(override.stopId);
+    else byStop.set(override.stopId, override.nameAm!);
+  }
+
+  const tombstoned = new Set(
+    overrides.filter((o) => o.deletedAt).map((o) => o.stopId),
+  );
+  return [...byStop]
+    .filter(([stopId]) => !tombstoned.has(stopId))
+    .map(([stopId, nameAm]) => ({ stopId, nameAm }))
+    .sort((a, b) => a.stopId.localeCompare(b.stopId));
+}
+
 async function buildZip(
   filePath: string,
   baseDir: string,
@@ -261,6 +300,14 @@ async function buildZip(
       continue;
     }
     archive.file(path.join(baseDir, name), { name });
+  }
+
+  // Amharic names reach riders only through this file — a name typed in the
+  // console and left out of the export would show on our map and nowhere
+  // else, which is the same trap console-created routes fell into.
+  const translations = translationsCsv(await loadStopTranslations());
+  if (translations !== "") {
+    archive.append(translations, { name: "translations.txt" });
   }
 
   archive.append(feedInfoCsv(version), { name: "feed_info.txt" });

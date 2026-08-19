@@ -353,3 +353,41 @@ export function applyTripOverridesToCsv(
     },
   });
 }
+
+/** One stop's Amharic name, as `translations.txt` records it. */
+export interface StopTranslation {
+  stopId: string;
+  nameAm: string;
+}
+
+/**
+ * Build `translations.txt` from the Amharic names the console holds.
+ *
+ * This is the GTFS-Translations extension, and it is the only correct place
+ * for an Amharic name: `stops.txt` has one `stop_name`, so writing Ge'ez into
+ * it would replace the Latin name every consumer already matches on rather
+ * than sit alongside it. Keyed by `record_id` (the stop_id) rather than
+ * `field_value`, which is the form that survives two stops sharing a name —
+ * and 2,271 Addis stops carry only 858 distinct names, so they do share.
+ *
+ * Returns an empty string when nothing is translated, so the caller can skip
+ * the file entirely instead of shipping a header with no rows.
+ */
+export function translationsCsv(rows: readonly StopTranslation[]): string {
+  if (rows.length === 0) return "";
+  const columns = [
+    "table_name",
+    "field_name",
+    "language",
+    "translation",
+    "record_id",
+  ];
+  const data = rows.map((row) => ({
+    table_name: "stops",
+    field_name: "stop_name",
+    language: "am",
+    translation: row.nameAm,
+    record_id: row.stopId,
+  }));
+  return Papa.unparse(data, { columns, newline: "\n" }) + "\n";
+}

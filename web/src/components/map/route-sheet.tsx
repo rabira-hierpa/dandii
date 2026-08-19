@@ -9,6 +9,7 @@ import {
   Share06,
   XCircle,
 } from "@untitledui/icons";
+import { useLocale } from "next-intl";
 import { RouteChip } from "@/components/console/route-chip";
 import {
   Tooltip,
@@ -19,6 +20,7 @@ import {
   CLOSURE_REASON_LABELS,
   type ClosureReasonValue,
 } from "@/lib/operators";
+import { localizedStopName } from "@/lib/stop-i18n";
 import { cx } from "@/utils/cx";
 import { FareProposalForm } from "./fare-proposal-form";
 import type { RouteDetail } from "./types";
@@ -52,6 +54,7 @@ export function RouteSheet({
 }>) {
   const [copied, setCopied] = useState(false);
   const [editingFare, setEditingFare] = useState(false);
+  const locale = useLocale();
 
   const shareUrl = useMemo(
     () =>
@@ -306,7 +309,7 @@ export function RouteSheet({
                         closed && "line-through decoration-[#EA580C]/70",
                       )}
                     >
-                      {stop.name}
+                      {localizedStopName(stop, locale)}
                     </span>
                     {closed && (
                       <span

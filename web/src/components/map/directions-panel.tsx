@@ -3,11 +3,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Key } from "react-aria-components";
 import { SwitchVertical01 } from "@untitledui/icons";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { Select } from "@/components/base/select/select";
 import type { SelectItemType } from "@/components/base/select/select-shared";
 import { OPERATOR_CODES, OPERATOR_META, type OperatorCode } from "@/lib/operators";
 import { ga } from "@/lib/gtag";
+import { localizedStopName } from "@/lib/stop-i18n";
 import { useMapStore } from "@/stores/map-store";
 import { cx } from "@/utils/cx";
 import type { DirectRoute, StopSearchResult, TransferJourney } from "./types";
@@ -36,13 +37,14 @@ function EndpointInput({
   const [query, setQuery] = useState("");
   const [fetched, setFetched] = useState<SelectItemType[]>([]);
   const stopsById = useRef(new Map<string, StopSearchResult>());
-  const inputValue = value ? value.name : query;
+  const locale = useLocale();
+  const inputValue = value ? localizedStopName(value, locale) : query;
   // react-aria ComboBox requires selectedKey to exist inside `items`. When a
   // stop is selected the collection must be exactly that item — filtering it
   // out (e.g. `[]`) makes react-aria clear the field on the next render, which
   // wiped one endpoint whenever the user typed in the other.
   const items: SelectItemType[] = value
-    ? [{ id: value.id, label: value.name }]
+    ? [{ id: value.id, label: localizedStopName(value, locale) }]
     : query.trim().length >= 2
       ? fetched
       : [];
@@ -54,10 +56,12 @@ function EndpointInput({
       const data = await res.json();
       const stops = (data.stops ?? []) as StopSearchResult[];
       for (const stop of stops) stopsById.current.set(stop.id, stop);
-      setFetched(stops.map((stop) => ({ id: stop.id, label: stop.name })));
+      setFetched(
+        stops.map((stop) => ({ id: stop.id, label: localizedStopName(stop, locale) })),
+      );
     }, 250);
     return () => clearTimeout(handle);
-  }, [query, value]);
+  }, [query, value, locale]);
 
   return (
     <div className="flex items-center gap-2.5">
@@ -442,6 +446,7 @@ function DirectRouteCard({
   const color = route.operator?.color ?? "#5F6368";
   const walk = route.walkToBoardMeters + route.walkFromAlightMeters;
   const headwayMin = Math.round((route.waitSecs * 2) / 60);
+  const locale = useLocale();
   return (
     <button
       onClick={onClick}
@@ -474,9 +479,13 @@ function DirectRouteCard({
       </div>
 
       <div className="flex items-center gap-1.5 text-[12.5px] text-[#3C4043]">
-        <span className="min-w-0 truncate font-medium">{route.board.name}</span>
+        <span className="min-w-0 truncate font-medium">
+          {localizedStopName(route.board, locale)}
+        </span>
         <span className="text-[#9AA0A6]">→</span>
-        <span className="min-w-0 truncate font-medium">{route.alight.name}</span>
+        <span className="min-w-0 truncate font-medium">
+          {localizedStopName(route.alight, locale)}
+        </span>
       </div>
 
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[11.5px] text-[#5F6368]">
@@ -523,7 +532,7 @@ function DirectRouteCard({
                       : "text-[#5F6368]",
                   )}
                 >
-                  {stop.name}
+                  {localizedStopName(stop, locale)}
                 </span>
               </li>
             );

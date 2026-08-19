@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
 
   const stops = await prisma.stop.findMany({
     where: { id: { in: [fromId, toId] } },
-    select: { id: true, name: true, lat: true, lon: true },
+    select: { id: true, name: true, nameAm: true, lat: true, lon: true },
   });
   const origin = stops.find((s) => s.id === fromId);
   const destination = stops.find((s) => s.id === toId);

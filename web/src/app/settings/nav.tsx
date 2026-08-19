@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Settings01, User01, Users01 } from "@untitledui/icons";
+import { Mail01, Settings01, User01, Users01 } from "@untitledui/icons";
 import { cx } from "@/utils/cx";
 
 const ITEMS = [
   { href: "/settings/profile", label: "Profile", icon: User01 },
   { href: "/settings/members", label: "Members", icon: Users01 },
+  { href: "/settings/invitations", label: "Invitations", icon: Mail01 },
   { href: "/settings/system", label: "System", icon: Settings01 },
 ];
 

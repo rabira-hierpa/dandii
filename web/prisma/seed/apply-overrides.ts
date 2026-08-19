@@ -180,8 +180,11 @@ async function applyStopOverrides(
   }
 
   const overrides = await prisma.stopOverride.findMany({
-    where: { name: { not: null }, deletedAt: null },
-    select: { stopId: true, name: true },
+    where: {
+      deletedAt: null,
+      OR: [{ name: { not: null } }, { nameAm: { not: null } }],
+    },
+    select: { stopId: true, name: true, nameAm: true },
   });
   if (overrides.length === 0) return 0;
 
@@ -202,7 +205,10 @@ async function applyStopOverrides(
     }
     await prisma.stop.update({
       where: { id: o.stopId },
-      data: { name: o.name as string },
+      data: {
+        ...(o.name !== null ? { name: o.name } : {}),
+        ...(o.nameAm !== null ? { nameAm: o.nameAm } : {}),
+      },
     });
     result.stopsRenamed++;
   }

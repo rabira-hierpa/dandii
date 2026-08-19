@@ -52,6 +52,8 @@ export interface RouteStop {
 export interface RouteStopRow {
   id: string;
   name: string;
+  /** Amharic display name, editable in the console alongside `name`. */
+  nameAm: string | null;
   lat: number;
   lon: number;
   sequence: number;

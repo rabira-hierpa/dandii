@@ -1,10 +1,14 @@
 "use client";
 
+import { useLocale } from "next-intl";
 import { Layer, Source } from "react-map-gl/maplibre";
+import { localizedStopName } from "@/lib/stop-i18n";
 
 export interface MapStop {
   id: string;
   name: string;
+  /** Amharic display name, when one exists. */
+  nameAm?: string | null;
   lat: number;
   lon: number;
 }
@@ -12,6 +16,7 @@ export interface MapStop {
 function toFeatureCollection(
   stops: MapStop[],
   closedIds: ReadonlySet<string> | undefined,
+  locale: string,
   extra?: Record<string, unknown>,
 ) {
   return {
@@ -24,7 +29,7 @@ function toFeatureCollection(
       },
       properties: {
         stopId: stop.id,
-        name: stop.name,
+        name: localizedStopName(stop, locale),
         index,
         closed: closedIds?.has(stop.id) ?? false,
         ...extra,
@@ -53,9 +58,10 @@ export function StopMarkersLayer({
   onLine = false,
   closedStopIds,
 }: StopMarkersLayerProps) {
+  const locale = useLocale();
   if (!visible || stops.length === 0) return null;
 
-  const data = toFeatureCollection(stops, closedStopIds, { variant });
+  const data = toFeatureCollection(stops, closedStopIds, locale, { variant });
   const isHub = variant === "hub";
   const haloRadius = isHub ? 7 : onLine ? 12 : 9;
   const dotRadius = isHub ? 4.5 : onLine ? 6.5 : 5.5;

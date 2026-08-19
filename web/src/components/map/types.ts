@@ -10,6 +10,8 @@ export interface RouteSearchResult {
 export interface StopSearchResult {
   id: string;
   name: string;
+  /** Amharic display name, when one exists — see @/lib/stop-i18n. */
+  nameAm?: string | null;
   lat: number;
   lon: number;
   /** Number of feed stops sharing this name, when results are grouped. */
@@ -58,7 +60,13 @@ export interface RouteDetail {
   } | null;
   headsign: string | null;
   frequencies: { startTime: string; endTime: string; headwaySecs: number }[];
-  stops: { id: string; name: string; lat: number; lon: number }[];
+  stops: {
+    id: string;
+    name: string;
+    nameAm?: string | null;
+    lat: number;
+    lon: number;
+  }[];
 }
 
 // --- Direct-route journey planner (lib/directions.ts serves these shapes) ---
@@ -66,6 +74,7 @@ export interface RouteDetail {
 export interface DirectionsAnchor {
   id: string;
   name: string;
+  nameAm?: string | null;
   lat: number;
   lon: number;
 }
@@ -73,6 +82,7 @@ export interface DirectionsAnchor {
 export interface DirectRouteEndpoint {
   id: string;
   name: string;
+  nameAm?: string | null;
   lat: number;
   lon: number;
 }

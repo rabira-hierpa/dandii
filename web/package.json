@@ -13,6 +13,7 @@
     "test:e2e": "playwright test",
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx --env-file=.env prisma/seed/index.ts",
+    "db:seed-amharic-stops": "tsx --env-file=.env scripts/seed-amharic-stop-names.ts",
     "promo": "tsx scripts/promo/record.mts",
     "promo:cut": "tsx scripts/promo/assemble.mts"
   },

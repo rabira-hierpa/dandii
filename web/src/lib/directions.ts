@@ -60,6 +60,7 @@ const OPERATOR_PRIORITY: Record<OperatorCode, number> = {
 interface ClusterStop {
   id: string;
   name: string;
+  nameAm: string | null;
   lat: number;
   lon: number;
   /** Great-circle metres from the anchor. */
@@ -118,7 +119,7 @@ async function clusterStops(anchor: DirectionsAnchor): Promise<ClusterStop[]> {
       lat: { gte: anchor.lat - latDelta, lte: anchor.lat + latDelta },
       lon: { gte: anchor.lon - lonDelta, lte: anchor.lon + lonDelta },
     },
-    select: { id: true, name: true, lat: true, lon: true },
+    select: { id: true, name: true, nameAm: true, lat: true, lon: true },
   });
   const near: ClusterStop[] = [];
   for (const s of box) {
@@ -127,7 +128,14 @@ async function clusterStops(anchor: DirectionsAnchor): Promise<ClusterStop[]> {
   }
   // The anchor stop itself is always included (dist 0); guarantees non-empty.
   if (!near.some((s) => s.id === anchor.id)) {
-    near.push({ id: anchor.id, name: anchor.name, lat: anchor.lat, lon: anchor.lon, dist: 0 });
+    near.push({
+      id: anchor.id,
+      name: anchor.name,
+      nameAm: anchor.nameAm ?? null,
+      lat: anchor.lat,
+      lon: anchor.lon,
+      dist: 0,
+    });
   }
   near.sort((a, b) => a.dist - b.dist);
   return near;
@@ -505,12 +513,14 @@ export async function findDirectRoutes(
       sequence: number;
       id: string;
       name: string;
+      nameAm: string | null;
       lat: number;
       lon: number;
     }[]
   >`
     SELECT st."tripId" AS "tripId", st.sequence AS "sequence",
-           s.id AS "id", s.name AS "name", s.lat AS "lat", s.lon AS "lon"
+           s.id AS "id", s.name AS "name", s."nameAm" AS "nameAm",
+           s.lat AS "lat", s.lon AS "lon"
     FROM stop_time st
     JOIN stop s ON s.id = st."stopId"
     WHERE st."tripId" = ANY(${tripIds})
@@ -520,6 +530,7 @@ export async function findDirectRoutes(
     sequence: number;
     id: string;
     name: string;
+    nameAm: string | null;
     lat: number;
     lon: number;
   };
@@ -530,6 +541,7 @@ export async function findDirectRoutes(
       sequence: r.sequence,
       id: r.id,
       name: r.name,
+      nameAm: r.nameAm,
       lat: r.lat,
       lon: r.lon,
     });
@@ -621,16 +633,24 @@ export async function findDirectRoutes(
         ? { code, name: meta.assignment!.operator.name, color: OPERATOR_META[code].color }
         : null,
       headsign: headsignByTrip.get(best.row.tripId) ?? null,
-      board: { id: best.board.id, name: best.board.name, lat: best.board.lat, lon: best.board.lon },
+      board: {
+        id: best.board.id,
+        name: best.board.name,
+        nameAm: best.board.nameAm,
+        lat: best.board.lat,
+        lon: best.board.lon,
+      },
       alight: {
         id: best.alight.id,
         name: best.alight.name,
+        nameAm: best.alight.nameAm,
         lat: best.alight.lat,
         lon: best.alight.lon,
       },
       stops: d.legStops.map((s) => ({
         id: s.id,
         name: s.name,
+        nameAm: s.nameAm,
         lat: s.lat,
         lon: s.lon,
       })),

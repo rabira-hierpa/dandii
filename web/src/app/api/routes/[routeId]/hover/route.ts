@@ -29,7 +29,19 @@ export async function GET(
             orderBy: { sequence: "asc" },
             select: {
               sequence: true,
-              stop: { select: { id: true, name: true, lat: true, lon: true } },
+              stop: {
+                select: {
+                  id: true,
+                  name: true,
+                  // Without this the map falls back to the English name for
+                  // every stop on a selected route, however many Amharic
+                  // names the console holds. `nameAm` is optional on the
+                  // client types, so dropping it here type-checks cleanly.
+                  nameAm: true,
+                  lat: true,
+                  lon: true,
+                },
+              },
             },
           },
         },

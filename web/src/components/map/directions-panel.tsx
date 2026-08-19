@@ -140,6 +140,8 @@ export function DirectionsPanel({
   onEndpoints,
 }: DirectionsPanelProps) {
   const t = useTranslations("directions");
+  const tMap = useTranslations("map");
+  const locale = useLocale();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const setSheetSnap = useMapStore((s) => s.setSheetSnap);
@@ -163,7 +165,15 @@ export function DirectionsPanel({
             best = d;
             nearest = {
               id: feature.properties?.stopId as string,
-              name: `Your location · ${feature.properties?.name}`,
+              // Both halves were English: a hardcoded prefix and the stop's
+              // Latin name, even for an Amharic reader.
+              name: `${tMap("myLocation")} · ${localizedStopName(
+                {
+                  name: feature.properties?.name as string,
+                  nameAm: feature.properties?.nameAm as string | null,
+                },
+                locale,
+              )}`,
               lat,
               lon,
               isCurrentLocation: true,

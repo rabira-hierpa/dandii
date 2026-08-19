@@ -419,8 +419,8 @@ export function PublicMap({ user, account }: Readonly<PublicMapProps>) {
         setRouteDetail({ routeId: selectedRouteId, detail: data });
         // State C: label the search box with the origin stop (Maps POI pattern).
         if (detailSourceRef.current === "direct") {
-          const origin = data.stops[0]?.name;
-          if (origin) setQuery(origin);
+          const origin = data.stops[0];
+          if (origin) setQuery(localizedStopName(origin, locale));
         }
         if (data.geojson?.coordinates?.length) {
           mapRef.current?.fitBounds(

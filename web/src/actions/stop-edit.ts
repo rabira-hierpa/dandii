@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { ZodError } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/lib/session";
+import { denyOutOfScope } from "@/lib/operator-scope";
 import {
   stopCreateSchema,
   stopIdSchema,
@@ -45,6 +46,11 @@ export async function renameStop(input: StopRenameInput) {
   } catch (err) {
     return zodError(err, "Invalid stop name");
   }
+
+  const denied = await denyOutOfScope(session.user.id, {
+    stopId: data.stopId,
+  });
+  if (denied) return denied;
 
   const stop = await prisma.stop.findUnique({
     where: { id: data.stopId },
@@ -105,6 +111,11 @@ export async function setStopNameAm(input: StopTranslateInput) {
     return zodError(err, "Invalid Amharic name");
   }
 
+  const denied = await denyOutOfScope(session.user.id, {
+    stopId: data.stopId,
+  });
+  if (denied) return denied;
+
   const stop = await prisma.stop.findUnique({
     where: { id: data.stopId },
     select: { id: true, origin: true },
@@ -144,13 +155,22 @@ export async function setStopNameAm(input: StopTranslateInput) {
  * trips at a given position.
  */
 export async function createStop(input: StopCreateInput) {
-  await requirePermission({ feedEdit: ["rename"] });
+  const session = await requirePermission({ feedEdit: ["rename"] });
 
   let data;
   try {
     data = stopCreateSchema.parse(input);
   } catch (err) {
     return zodError(err, "Invalid stop");
+  }
+
+  // The stop itself belongs to nobody until it joins a route, so only the
+  // insert needs scoping.
+  if (data.routeId) {
+    const denied = await denyOutOfScope(session.user.id, {
+      routeId: data.routeId,
+    });
+    if (denied) return denied;
   }
 
   const id = `op:${crypto.randomUUID()}`;
@@ -252,6 +272,11 @@ export async function deleteStop(input: { stopId: string }) {
     return zodError(err, "Invalid stop");
   }
 
+  const denied = await denyOutOfScope(session.user.id, {
+    stopId: data.stopId,
+  });
+  if (denied) return denied;
+
   const stop = await prisma.stop.findUnique({
     where: { id: data.stopId },
     select: { id: true, name: true, origin: true },
@@ -315,6 +340,11 @@ export async function reorderRouteStops(input: StopReorderInput) {
   } catch (err) {
     return zodError(err, "Invalid stop order");
   }
+
+  const denied = await denyOutOfScope(session.user.id, {
+    routeId: data.routeId,
+  });
+  if (denied) return denied;
 
   if (new Set(data.stopIds).size !== data.stopIds.length) {
     return { ok: false as const, error: "The same stop appears twice" };

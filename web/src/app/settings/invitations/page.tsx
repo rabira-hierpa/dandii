@@ -13,6 +13,7 @@ export default async function InvitationsSettingsPage() {
       id: true,
       email: true,
       role: true,
+      operatorCode: true,
       status: true,
       expiresAt: true,
       createdAt: true,

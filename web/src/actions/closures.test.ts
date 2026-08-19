@@ -13,6 +13,7 @@ const session = vi.hoisted(() => ({
   current: { user: { id: "user-1", role: "super-admin" } },
 }));
 const prisma = vi.hoisted(() => ({
+  user: { findUnique: vi.fn() },
   trip: { findFirst: vi.fn() },
   routeClosure: { create: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
 }));
@@ -39,6 +40,7 @@ const whole = () => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  prisma.user.findUnique.mockResolvedValue({ role: "admin", operatorCode: null });
   session.current = { user: { id: "user-1", role: "super-admin" } };
   prisma.routeClosure.create.mockResolvedValue({});
   prisma.routeClosure.findUnique.mockResolvedValue({ id: "c1" });

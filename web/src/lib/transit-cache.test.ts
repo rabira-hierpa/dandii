@@ -9,6 +9,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  */
 
 const prisma = vi.hoisted(() => ({
+  user: { findUnique: vi.fn() },
   routeClosure: { findMany: vi.fn() },
 }));
 
@@ -25,6 +26,7 @@ const CLOSURE = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  prisma.user.findUnique.mockResolvedValue({ role: "admin", operatorCode: null });
   invalidateClosureCache();
   prisma.routeClosure.findMany.mockResolvedValue([CLOSURE]);
 });

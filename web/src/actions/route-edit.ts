@@ -5,6 +5,7 @@ import { ZodError } from "zod";
 import { prisma } from "@/lib/prisma";
 import { createRouteRow, operatorId } from "@/lib/route-create";
 import { requirePermission } from "@/lib/session";
+import { denyOutOfScope, getUserOperatorCode } from "@/lib/operator-scope";
 import {
   routeCreateSchema,
   routeEditSchema,
@@ -43,6 +44,11 @@ export async function updateRouteFields(input: RouteEditInput) {
   } catch (err) {
     return zodError(err, "Invalid route edit");
   }
+
+  const denied = await denyOutOfScope(session.user.id, {
+    routeId: data.routeId,
+  });
+  if (denied) return denied;
 
   const route = await prisma.route.findUnique({
     where: { id: data.routeId },
@@ -113,6 +119,17 @@ export async function createRoute(input: RouteCreateInput) {
     return zodError(err, "Invalid route");
   }
 
+  // A scoped operator creates routes under their own operator or not at all —
+  // otherwise the picker in the form is the only thing stopping them from
+  // filing a line under someone else's name.
+  const scope = await getUserOperatorCode(session.user.id);
+  if (scope !== null && data.operatorCode !== scope) {
+    return {
+      ok: false as const,
+      error: `You can only create routes for ${scope}`,
+    };
+  }
+
   const operator = await prisma.operator.findUnique({
     where: { code: data.operatorCode },
     select: { id: true },
@@ -162,6 +179,11 @@ export async function duplicateRoute(input: { routeId: string }) {
   } catch (err) {
     return zodError(err, "Invalid route");
   }
+
+  const denied = await denyOutOfScope(session.user.id, {
+    routeId: data.routeId,
+  });
+  if (denied) return denied;
 
   const source = await prisma.route.findUnique({
     where: { id: data.routeId },
@@ -215,6 +237,11 @@ export async function deleteRoute(input: { routeId: string }) {
   } catch (err) {
     return zodError(err, "Invalid route");
   }
+
+  const denied = await denyOutOfScope(session.user.id, {
+    routeId: data.routeId,
+  });
+  if (denied) return denied;
 
   const route = await prisma.route.findUnique({
     where: { id: data.routeId },

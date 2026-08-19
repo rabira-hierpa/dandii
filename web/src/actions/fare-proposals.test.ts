@@ -14,6 +14,7 @@ const tx = vi.hoisted(() => ({
   $executeRaw: vi.fn(),
 }));
 const prisma = vi.hoisted(() => ({
+  user: { findUnique: vi.fn() },
   fareProposal: { count: vi.fn(), findUnique: vi.fn() },
   route: { findUnique: vi.fn() },
   fare: { findUnique: vi.fn() },
@@ -68,6 +69,7 @@ const PENDING = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  prisma.user.findUnique.mockResolvedValue({ role: "admin", operatorCode: null });
   session.current = { user: { id: "reviewer-1" } };
   prisma.route.findUnique.mockResolvedValue({ id: "route-1" });
   prisma.fare.findUnique.mockResolvedValue(null);

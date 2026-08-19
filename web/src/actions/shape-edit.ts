@@ -5,6 +5,7 @@ import { ZodError } from "zod";
 import { prisma } from "@/lib/prisma";
 import { snapWaypoints, type Waypoint } from "@/lib/road-snap";
 import { requirePermission } from "@/lib/session";
+import { denyOutOfScope } from "@/lib/operator-scope";
 import {
   shapeResetSchema,
   shapeSaveSchema,
@@ -36,6 +37,11 @@ export async function saveRouteShape(input: ShapeSaveInput) {
     }
     throw err;
   }
+
+  const denied = await denyOutOfScope(session.user.id, {
+    routeId: data.routeId,
+  });
+  if (denied) return denied;
 
   const route = await prisma.route.findUnique({
     where: { id: data.routeId },
@@ -123,7 +129,7 @@ export async function saveRouteShape(input: ShapeSaveInput) {
  * base — i.e. whatever the last seed wrote — via a reseed of these shape ids.
  */
 export async function resetRouteShape(input: ShapeResetInput) {
-  await requirePermission({ feedEdit: ["shape"] });
+  const session = await requirePermission({ feedEdit: ["shape"] });
 
   let data;
   try {
@@ -137,6 +143,11 @@ export async function resetRouteShape(input: ShapeResetInput) {
     }
     throw err;
   }
+
+  const denied = await denyOutOfScope(session.user.id, {
+    routeId: data.routeId,
+  });
+  if (denied) return denied;
 
   const existing = await prisma.shapeOverride.findUnique({
     where: {

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { ZodError } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/lib/session";
+import { denyOutOfScope } from "@/lib/operator-scope";
 import { tripEditSchema, type TripEditInput } from "./trip-edit-schema";
 
 /**
@@ -25,6 +26,11 @@ export async function updateTripFields(input: TripEditInput) {
     }
     throw err;
   }
+
+  const denied = await denyOutOfScope(session.user.id, {
+    tripId: data.tripId,
+  });
+  if (denied) return denied;
 
   const trip = await prisma.trip.findUnique({
     where: { id: data.tripId },

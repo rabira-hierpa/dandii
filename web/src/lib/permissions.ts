@@ -118,6 +118,13 @@ export const CONSOLE_ROLES: AppRole[] = [
 export const SETTINGS_ROLES: AppRole[] = ["super-admin", "admin"];
 
 /** Role-assignment power: which roles each role may grant. */
+/**
+ * Roles that operate one operator's routes rather than the whole network.
+ * A user holding one of these must carry a `User.operatorCode`; every other
+ * role must not. `lib/operator-scope.ts` treats a violation as a denial.
+ */
+export const OPERATOR_SCOPED_ROLES: AppRole[] = ["route-operator"];
+
 export const ASSIGNABLE_ROLES: Record<string, AppRole[]> = {
   "super-admin": ["super-admin", "admin", "route-operator", "maintainer", "user"],
   admin: ["route-operator", "maintainer", "user"],

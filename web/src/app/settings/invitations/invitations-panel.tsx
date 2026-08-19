@@ -2,13 +2,23 @@
 
 import { useState, useTransition } from "react";
 import { createInvitation, revokeInvitation } from "@/actions/invitations";
-import { ASSIGNABLE_ROLES, type AppRole } from "@/lib/permissions";
+import {
+  OPERATOR_CODES,
+  OPERATOR_META,
+  type OperatorCode,
+} from "@/lib/operators";
+import {
+  ASSIGNABLE_ROLES,
+  OPERATOR_SCOPED_ROLES,
+  type AppRole,
+} from "@/lib/permissions";
 import { cx } from "@/utils/cx";
 
 interface InvitationRow {
   id: string;
   email: string;
   role: string;
+  operatorCode: OperatorCode | null;
   status: "PENDING" | "ACCEPTED" | "REVOKED" | "EXPIRED";
   expiresAt: Date | string;
   createdAt: Date | string;
@@ -43,6 +53,15 @@ export function InvitationsPanel({
   const assignable = ASSIGNABLE_ROLES[currentRole] ?? [];
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<AppRole | "">(assignable[0] ?? "");
+  const [operatorCode, setOperatorCode] = useState<OperatorCode>(
+    OPERATOR_CODES[0],
+  );
+  // Derived, not stored: the operator only exists for the scoped roles, and
+  // keeping it in state would let a stale value ride along with an admin
+  // invite the moment someone switched the role back.
+  const needsOperator = (OPERATOR_SCOPED_ROLES as readonly string[]).includes(
+    role,
+  );
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [lastLink, setLastLink] = useState<{ link: string; emailed: boolean } | null>(
@@ -56,7 +75,11 @@ export function InvitationsPanel({
     setError(null);
     setLastLink(null);
     startTransition(async () => {
-      const result = await createInvitation({ email: email.trim(), role });
+      const result = await createInvitation({
+        email: email.trim(),
+        role,
+        operatorCode: needsOperator ? operatorCode : null,
+      });
       if (result.ok) {
         setEmail("");
         setLastLink({ link: result.data.link, emailed: result.data.emailed });
@@ -114,6 +137,24 @@ export function InvitationsPanel({
                 ))}
               </select>
             </label>
+            {needsOperator && (
+              <label className="flex flex-col gap-1 text-xs font-semibold text-[#5C6B5E]">
+                Operator
+                <select
+                  value={operatorCode}
+                  onChange={(e) =>
+                    setOperatorCode(e.target.value as OperatorCode)
+                  }
+                  className={cx(inputClass, "cursor-pointer")}
+                >
+                  {OPERATOR_CODES.map((code) => (
+                    <option key={code} value={code}>
+                      {OPERATOR_META[code].name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             <button
               type="button"
               onClick={submitInvite}
@@ -174,7 +215,11 @@ export function InvitationsPanel({
               <span className="truncate text-[13px] text-[#1C2321]">
                 {inv.email}
               </span>
-              <span className="text-[12.5px] text-[#3D4A3F]">{inv.role}</span>
+              <span className="text-[12.5px] text-[#3D4A3F]">
+                {inv.operatorCode
+                  ? `${inv.role} · ${OPERATOR_META[inv.operatorCode].name}`
+                  : inv.role}
+              </span>
               <span
                 className={cx(
                   "w-fit justify-self-start rounded-full px-2.5 py-0.5 text-[11px] font-semibold",

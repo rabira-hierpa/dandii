@@ -13,11 +13,13 @@ const tx = vi.hoisted(() => ({
   stopTime: { deleteMany: vi.fn(), createMany: vi.fn() },
 }));
 const prisma = vi.hoisted(() => ({
+  user: { findUnique: vi.fn() },
   stop: { findUnique: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() },
   stopOverride: { upsert: vi.fn(), deleteMany: vi.fn() },
   stopTime: { findMany: vi.fn() },
   trip: { findMany: vi.fn(), findFirst: vi.fn() },
   routeStopOrderOverride: { upsert: vi.fn() },
+  routeAssignment: { findMany: vi.fn() },
   $transaction: vi.fn(),
 }));
 
@@ -34,6 +36,7 @@ const MEGENAGNA = { lat: 9.0194, lon: 38.8005 };
 
 beforeEach(() => {
   vi.clearAllMocks();
+  prisma.user.findUnique.mockResolvedValue({ role: "admin", operatorCode: null });
   prisma.stop.findUnique.mockResolvedValue({
     id: "node/1",
     name: "Megenagna",
@@ -386,5 +389,60 @@ describe("reorderRouteStops", () => {
 
     expect(result.ok).toBe(false);
     expect(prisma.trip.findMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("operator scope", () => {
+  /**
+   * The Amharic translation path runs through the same rename permission, so
+   * it inherits the same boundary: a dispatcher may name their own line's
+   * stops, not a hub that another operator's line also calls at.
+   */
+  function anbessaDispatcher() {
+    prisma.user.findUnique.mockResolvedValue({
+      role: "route-operator",
+      operatorCode: "ANBESSA",
+    });
+  }
+
+  it("refuses to translate a stop an LRT line also serves", async () => {
+    anbessaDispatcher();
+    prisma.stopTime.findMany.mockResolvedValue([
+      { trip: { routeId: "r1" } },
+      { trip: { routeId: "r9" } },
+    ]);
+    prisma.routeAssignment.findMany.mockResolvedValue([
+      { routeId: "r1", operator: { code: "ANBESSA" } },
+      { routeId: "r9", operator: { code: "LRT" } },
+    ]);
+
+    const result = await setStopNameAm({ stopId: "stop-1", nameAm: "መገናኛ" });
+
+    expect(result.ok).toBe(false);
+    expect(prisma.stopOverride.upsert).not.toHaveBeenCalled();
+  });
+
+  it("allows translating a stop only their own line serves", async () => {
+    anbessaDispatcher();
+    prisma.stopTime.findMany.mockResolvedValue([{ trip: { routeId: "r1" } }]);
+    prisma.routeAssignment.findMany.mockResolvedValue([
+      { routeId: "r1", operator: { code: "ANBESSA" } },
+    ]);
+
+    const result = await setStopNameAm({ stopId: "stop-1", nameAm: "ጦር ኃይሎች" });
+
+    expect(result.ok).toBe(true);
+  });
+
+  it("refuses to rename another operator's stop", async () => {
+    anbessaDispatcher();
+    prisma.stopTime.findMany.mockResolvedValue([{ trip: { routeId: "r9" } }]);
+    prisma.routeAssignment.findMany.mockResolvedValue([
+      { routeId: "r9", operator: { code: "SHEGER" } },
+    ]);
+
+    const result = await renameStop({ stopId: "stop-1", name: "Mine now" });
+
+    expect(result.ok).toBe(false);
   });
 });

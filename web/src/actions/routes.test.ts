@@ -10,6 +10,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  */
 
 const prisma = vi.hoisted(() => ({
+  user: { findUnique: vi.fn() },
   route: { create: vi.fn(), findMany: vi.fn(), deleteMany: vi.fn() },
   agency: { findFirst: vi.fn() },
 }));
@@ -33,6 +34,7 @@ const input = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  prisma.user.findUnique.mockResolvedValue({ role: "admin", operatorCode: null });
   prisma.agency.findFirst.mockResolvedValue({ id: "AA" });
   prisma.route.create.mockResolvedValue({ id: "manual-1" });
 });

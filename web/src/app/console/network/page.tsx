@@ -19,7 +19,15 @@ export default async function NetworkMapPage() {
       assignment: { select: { operator: { select: { code: true } } } },
       closures: {
         where: activeClosureFilter(),
-        select: { id: true, reason: true, note: true, endsAt: true },
+        select: {
+          id: true,
+          reason: true,
+          note: true,
+          endsAt: true,
+          kind: true,
+          fromStopId: true,
+          toStopId: true,
+        },
         orderBy: { endsAt: "desc" },
         take: 1,
       },
@@ -27,21 +35,27 @@ export default async function NetworkMapPage() {
     orderBy: { shortName: "asc" },
   });
 
-  const networkRoutes: NetworkRoute[] = routes.map((route) => ({
-    id: route.id,
-    shortName: route.shortName,
-    longName: route.longName,
-    operatorCode:
-      (route.assignment?.operator.code as OperatorCode | undefined) ?? null,
-    closure: route.closures[0]
-      ? {
-          id: route.closures[0].id,
-          reason: route.closures[0].reason as ClosureReasonValue,
-          note: route.closures[0].note,
-          endsAt: route.closures[0].endsAt.toISOString(),
-        }
-      : null,
-  }));
+  const networkRoutes: NetworkRoute[] = routes.map((route) => {
+    const c = route.closures[0];
+    return {
+      id: route.id,
+      shortName: route.shortName,
+      longName: route.longName,
+      operatorCode:
+        (route.assignment?.operator.code as OperatorCode | undefined) ?? null,
+      closure: c
+        ? {
+            id: c.id,
+            reason: c.reason as ClosureReasonValue,
+            note: c.note,
+            endsAt: c.endsAt.toISOString(),
+            kind: c.kind as "WHOLE_ROUTE" | "SEVERED" | "SKIPPED",
+            fromStopId: c.fromStopId,
+            toStopId: c.toStopId,
+          }
+        : null,
+    };
+  });
 
   return (
     <>

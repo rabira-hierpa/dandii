@@ -10,7 +10,12 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient, Prisma } from "../../src/generated/prisma/client";
 import type { OperatorCode } from "../../src/generated/prisma/enums";
-import { buildRouteGeometry, groupShapes } from "./build-geojson";
+import { applyOverrides } from "./apply-overrides";
+import {
+  buildRouteGeometry,
+  groupShapes,
+  type RouteGeometry,
+} from "./build-geojson";
 import {
   readGtfsFile,
   type GtfsAgency,
@@ -111,12 +116,32 @@ async function main() {
 
   console.log("Building route geometries…");
   const shapes = groupShapes(shapePoints);
-  // Route → shape via its first trip that has a shape.
+
+  /**
+   * Pick the shape the PUBLIC map draws for each route.
+   *
+   * Routes carry two shapes (444 of 447 do) and the rider map draws one line,
+   * so one has to win. Outbound (direction_id 0) is that line — every route in
+   * the feed has one, whereas 3 routes have no inbound shape at all.
+   *
+   * Both shapes are still stored (see the Shape import below); this only
+   * decides which one hangs off Route.geojson for riders. The console reads
+   * them per direction via /api/geo/routes?directions=both.
+   */
   const routeShapeId = new Map<string, string>();
+  const routeFallbackShapeId = new Map<string, string>();
   for (const trip of trips) {
-    if (trip.shape_id && !routeShapeId.has(trip.route_id)) {
-      routeShapeId.set(trip.route_id, trip.shape_id);
+    if (!trip.shape_id) continue;
+    if (trip.direction_id === "0") {
+      if (!routeShapeId.has(trip.route_id)) {
+        routeShapeId.set(trip.route_id, trip.shape_id);
+      }
+    } else if (!routeFallbackShapeId.has(trip.route_id)) {
+      routeFallbackShapeId.set(trip.route_id, trip.shape_id);
     }
+  }
+  for (const [routeId, shapeId] of routeFallbackShapeId) {
+    if (!routeShapeId.has(routeId)) routeShapeId.set(routeId, shapeId);
   }
 
   // --preserve-fares is the DEFAULT (design-review T0). It never deletes
@@ -172,13 +197,39 @@ async function main() {
   await prisma.stopTime.deleteMany();
   await prisma.trip.deleteMany();
   await prisma.calendar.deleteMany();
-  await prisma.stop.deleteMany();
+  await prisma.shape.deleteMany();
+  // Feed-owned rows only. Stops an operator created in the console have no
+  // base-feed row to be reloaded from, so wiping them here would destroy the
+  // edit permanently — the reseed would have nothing to put back.
+  await prisma.stop.deleteMany({ where: { origin: "FEED" } });
   if (!preserve) {
     await prisma.routeClosure.deleteMany();
     await prisma.fareTier.deleteMany();
     await prisma.fare.deleteMany();
-    await prisma.route.deleteMany();
+    await prisma.route.deleteMany({ where: { origin: "FEED" } });
   }
+
+  // Every shape, not just the rider-facing one — the console draws both
+  // directions and the shape editor needs each line addressable by shape_id.
+  console.log(`Importing ${shapes.size} shapes…`);
+  const shapeRows = [...shapes]
+    .map(([id, coords]) => {
+      const geometry = buildRouteGeometry(coords);
+      return geometry ? { id, geometry } : null;
+    })
+    .filter((row): row is { id: string; geometry: RouteGeometry } => row !== null);
+  await batchedCreate(shapeRows, (chunk) =>
+    prisma.shape.createMany({
+      data: chunk.map((s) => ({
+        id: s.id,
+        geojson: s.geometry.geojson as unknown as Prisma.InputJsonValue,
+        geojsonSimplified: s.geometry
+          .geojsonSimplified as unknown as Prisma.InputJsonValue,
+        lengthMeters: s.geometry.lengthMeters,
+      })),
+      skipDuplicates: true,
+    }),
+  );
 
   console.log("Importing stops…");
   await batchedCreate(stops, (chunk) =>
@@ -248,6 +299,7 @@ async function main() {
         routeId: t.route_id,
         serviceId: t.service_id,
         shapeId: t.shape_id || null,
+        directionId: t.direction_id === "" ? null : Number(t.direction_id),
         headsign: t.trip_headsign || null,
       })),
       skipDuplicates: true,
@@ -323,11 +375,31 @@ async function main() {
     console.log("Skipping default-fare seed (existing fares preserved).");
   }
 
+  // Last step, deliberately: the import above reloads the feed verbatim and
+  // would otherwise discard every console correction. Replaying overrides here
+  // makes a reseed reproduce the edited state rather than the raw feed.
+  console.log("Re-applying operator overrides…");
+  const overrides = await applyOverrides(prisma);
+  console.log(
+    `  ${overrides.stopsRenamed} stops renamed, ${overrides.routesEdited} routes edited, ` +
+      `${overrides.operatorsReassigned} operators reassigned, ` +
+      `${overrides.directionsReordered} directions reordered, ` +
+      `${overrides.tripsEdited} trips edited` +
+      (overrides.stopsDeleted + overrides.routesDeleted > 0
+        ? `, ${overrides.stopsDeleted} stops and ${overrides.routesDeleted} routes deleted ` +
+          `(${overrides.stopTimesRemoved} stop_times went with them)`
+        : "") +
+      (overrides.skipped > 0
+        ? `, ${overrides.skipped} kept but not applied (id absent from this feed)`
+        : ""),
+  );
+
   const counts = {
     agencies: await prisma.agency.count(),
     operators: await prisma.operator.count(),
     routes: await prisma.route.count(),
     stops: await prisma.stop.count(),
+    shapes: await prisma.shape.count(),
     trips: await prisma.trip.count(),
     stopTimes: await prisma.stopTime.count(),
     frequencies: await prisma.frequency.count(),

@@ -51,6 +51,10 @@ export interface RouteDetail {
     note: string | null;
     startsAt: string;
     endsAt: string;
+    kind?: "WHOLE_ROUTE" | "SEVERED" | "SKIPPED";
+    fromStopId?: string | null;
+    toStopId?: string | null;
+    summary?: string | null;
   } | null;
   headsign: string | null;
   frequencies: { startTime: string; endTime: string; headwaySecs: number }[];

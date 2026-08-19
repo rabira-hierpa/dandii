@@ -1,3 +1,4 @@
+import { describeClosure } from "@/lib/closures";
 import { prisma } from "@/lib/prisma";
 import { activeClosureFilter, summarizeFare } from "@/lib/transit";
 
@@ -35,7 +36,15 @@ export async function GET(
       },
       closures: {
         where: activeClosureFilter(),
-        select: { reason: true, note: true, startsAt: true, endsAt: true },
+        select: {
+          reason: true,
+          note: true,
+          startsAt: true,
+          endsAt: true,
+          kind: true,
+          fromStopId: true,
+          toStopId: true,
+        },
         orderBy: { endsAt: "desc" },
         take: 1,
       },
@@ -64,6 +73,20 @@ export async function GET(
   }
 
   const trip = route.trips[0];
+  const stops = trip?.stopTimes.map((st) => st.stop) ?? [];
+  const c = route.closures[0];
+  let closureSummary: string | null = null;
+  if (c) {
+    closureSummary = describeClosure(
+      {
+        kind: c.kind as "WHOLE_ROUTE" | "SEVERED" | "SKIPPED",
+        fromStopId: c.fromStopId,
+        toStopId: c.toStopId,
+      },
+      stops,
+    );
+  }
+
   return Response.json({
     id: route.id,
     shortName: route.shortName,
@@ -85,9 +108,20 @@ export async function GET(
           })),
         }
       : null,
-    closure: route.closures[0] ?? null,
+    closure: c
+      ? {
+          reason: c.reason,
+          note: c.note,
+          startsAt: c.startsAt,
+          endsAt: c.endsAt,
+          kind: c.kind,
+          fromStopId: c.fromStopId,
+          toStopId: c.toStopId,
+          summary: closureSummary,
+        }
+      : null,
     headsign: trip?.headsign ?? null,
     frequencies: trip?.frequencies ?? [],
-    stops: trip?.stopTimes.map((st) => st.stop) ?? [],
+    stops,
   });
 }

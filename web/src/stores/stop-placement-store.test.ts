@@ -88,3 +88,38 @@ describe("stop placement", () => {
     });
   });
 });
+
+describe("coordinate draft", () => {
+  it("a picked point fills both fields at click precision", () => {
+    useStopPlacementStore.getState().startPlacing();
+    useStopPlacementStore.getState().pick({ lat: 9.0104123456, lon: 38.76129 });
+
+    const s = useStopPlacementStore.getState();
+    expect(s.latText).toBe("9.010412");
+    expect(s.lonText).toBe("38.761290");
+  });
+
+  it("stays typeable — a surveyed coordinate overwrites a clicked one", () => {
+    useStopPlacementStore.getState().pick({ lat: 9.02, lon: 38.8 });
+    useStopPlacementStore.getState().setLatText("9.123456");
+
+    expect(useStopPlacementStore.getState().latText).toBe("9.123456");
+  });
+
+  it("a refused click leaves the fields alone", () => {
+    useStopPlacementStore.getState().setLatText("9.0");
+    useStopPlacementStore.getState().setLonText("38.7");
+    useStopPlacementStore.getState().pick({ lat: -1.29, lon: 36.82 });
+
+    const s = useStopPlacementStore.getState();
+    expect(s.latText).toBe("9.0");
+    expect(s.lonText).toBe("38.7");
+  });
+
+  it("reset empties the fields after the stop is created", () => {
+    useStopPlacementStore.getState().pick({ lat: 9.02, lon: 38.8 });
+    useStopPlacementStore.getState().reset();
+
+    expect(useStopPlacementStore.getState().latText).toBe("");
+  });
+});

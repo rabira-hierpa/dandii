@@ -51,23 +51,16 @@ export function RouteStopsTab({ detail, onChanged }: RouteStopsTabProps) {
   const [draftNameAm, setDraftNameAm] = useState("");
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
-  const [newLat, setNewLat] = useState("");
-  const [newLon, setNewLon] = useState("");
   const placing = useStopPlacementStore((st) => st.placing);
   const picked = useStopPlacementStore((st) => st.picked);
   const outOfBounds = useStopPlacementStore((st) => st.outOfBounds);
   const startPlacing = useStopPlacementStore((st) => st.startPlacing);
   const cancelPlacing = useStopPlacementStore((st) => st.cancelPlacing);
   const resetPlacement = useStopPlacementStore((st) => st.reset);
-
-  // A picked point drives the two coordinate fields. They stay editable —
-  // clicking is a faster way to fill them in, not a replacement for typing a
-  // coordinate somebody read off a survey.
-  useEffect(() => {
-    if (!picked) return;
-    setNewLat(picked.lat.toFixed(6));
-    setNewLon(picked.lon.toFixed(6));
-  }, [picked]);
+  const newLat = useStopPlacementStore((st) => st.latText);
+  const newLon = useStopPlacementStore((st) => st.lonText);
+  const setNewLat = useStopPlacementStore((st) => st.setLatText);
+  const setNewLon = useStopPlacementStore((st) => st.setLonText);
 
   // Escape is the expected way out of a map mode, and without it the only exit
   // is a button the map may be covering on a narrow screen.
@@ -216,8 +209,6 @@ export function RouteStopsTab({ detail, onChanged }: RouteStopsTabProps) {
         setCreating(false);
         resetPlacement();
         setNewName("");
-        setNewLat("");
-        setNewLon("");
         refresh();
       } else {
         setFeedback({ kind: "error", message: result.error });

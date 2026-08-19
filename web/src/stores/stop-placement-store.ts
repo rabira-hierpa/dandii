@@ -31,6 +31,20 @@ export function isInAddis(point: PickedPoint): boolean {
 }
 
 interface StopPlacementState {
+  /**
+   * The coordinate fields themselves, as text.
+   *
+   * They live here rather than in the form because a map click has to fill
+   * them, and mirroring a store value into `useState` with an effect is both
+   * the cascading-render smell the linter flags and the sync-effect this
+   * project's rules forbid. The store owns them; the inputs are controlled by
+   * it and stay freely editable, so typing a surveyed coordinate still works.
+   */
+  latText: string;
+  lonText: string;
+  setLatText: (value: string) => void;
+  setLonText: (value: string) => void;
+
   /** True while the operator is choosing a position on the map. */
   placing: boolean;
   /**
@@ -58,6 +72,11 @@ export const useStopPlacementStore = create<StopPlacementState>((set) => ({
   placing: false,
   picked: null,
   outOfBounds: false,
+  latText: "",
+  lonText: "",
+
+  setLatText: (value) => set({ latText: value }),
+  setLonText: (value) => set({ lonText: value }),
 
   startPlacing: () => set({ placing: true, outOfBounds: false }),
   cancelPlacing: () => set({ placing: false, outOfBounds: false }),
@@ -69,8 +88,23 @@ export const useStopPlacementStore = create<StopPlacementState>((set) => ({
       set({ outOfBounds: true });
       return;
     }
-    set({ placing: false, picked: point, outOfBounds: false });
+    set({
+      placing: false,
+      picked: point,
+      outOfBounds: false,
+      // Six decimals is about 11 cm — past the precision of a click, and past
+      // anything a bus stop position needs.
+      latText: point.lat.toFixed(6),
+      lonText: point.lon.toFixed(6),
+    });
   },
 
-  reset: () => set({ placing: false, picked: null, outOfBounds: false }),
+  reset: () =>
+    set({
+      placing: false,
+      picked: null,
+      outOfBounds: false,
+      latText: "",
+      lonText: "",
+    }),
 }));

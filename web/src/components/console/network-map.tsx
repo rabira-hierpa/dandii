@@ -358,6 +358,19 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
   );
 
   const placing = useStopPlacementStore((st) => st.placing);
+  const mapShellRef = useRef<HTMLDivElement>(null);
+
+  // The Stops tab sits above the map in the console's single column, so on a
+  // laptop "Pick on map" leaves the operator looking at a form with no map in
+  // sight and nothing to click. Bring the map to them.
+  useEffect(() => {
+    if (!placing) return;
+    // Instant, not smooth: the operator pressed a button to go click the map,
+    // so an animation is 400ms of not being able to do the thing they asked
+    // for. (Smooth is also a no-op in headless Chromium, so this stays
+    // verifiable.)
+    mapShellRef.current?.scrollIntoView({ behavior: "auto", block: "center" });
+  }, [placing]);
   const pickPoint = useStopPlacementStore((st) => st.pick);
   const pickedPoint = useStopPlacementStore((st) => st.picked);
 
@@ -548,7 +561,10 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
           </span>
         </div>
 
-        <div className="relative h-[90vh] min-h-100 overflow-hidden rounded-lg">
+        <div
+          ref={mapShellRef}
+          className="relative h-[90vh] min-h-100 overflow-hidden rounded-lg"
+        >
           <button
             type="button"
             aria-label="Transit layers"

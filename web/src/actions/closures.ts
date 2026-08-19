@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { ZodError } from "zod";
 import { MAINTAINER_REASONS } from "@/lib/operators";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/lib/session";
@@ -13,17 +14,69 @@ function revalidateConsole() {
   revalidatePath("/api/geo/routes");
 }
 
+/**
+ * Ordered stop ids for one trip on the route (canonical outbound = lowest
+ * trip id). Used to validate and normalize a closed range.
+ */
+async function routeStopOrder(routeId: string): Promise<string[]> {
+  const trip = await prisma.trip.findFirst({
+    where: { routeId },
+    orderBy: { id: "asc" },
+    select: {
+      stopTimes: {
+        orderBy: { sequence: "asc" },
+        select: { stopId: true },
+      },
+    },
+  });
+  return trip?.stopTimes.map((st) => st.stopId) ?? [];
+}
+
 export async function createClosure(input: ClosureInput) {
   const session = await requirePermission({ closure: ["create"] });
-  const data = closureSchema.parse(input);
 
-  // Maintainers may only close for MAINTENANCE/OTHER.
+  let data;
+  try {
+    data = closureSchema.parse(input);
+  } catch (err) {
+    if (err instanceof ZodError) {
+      return {
+        ok: false as const,
+        error: err.issues[0]?.message ?? "Invalid closure",
+      };
+    }
+    throw err;
+  }
+
   const role = session.user.role ?? "user";
   if (role === "maintainer" && !MAINTAINER_REASONS.includes(data.reason)) {
     return {
       ok: false as const,
       error: "Maintainers can only create maintenance or other closures",
     };
+  }
+
+  let fromStopId: string | null = null;
+  let toStopId: string | null = null;
+
+  if (data.kind !== "WHOLE_ROUTE") {
+    const order = await routeStopOrder(data.routeId);
+    if (order.length === 0) {
+      return { ok: false as const, error: "Route has no trips/stops to close" };
+    }
+    const from = data.fromStopId!;
+    const to = data.toStopId!;
+    const i = order.indexOf(from);
+    const j = order.indexOf(to);
+    if (i < 0 || j < 0) {
+      return {
+        ok: false as const,
+        error: "Both stops must be on this route",
+      };
+    }
+    // Normalize so from precedes to in trip order.
+    fromStopId = i <= j ? from : to;
+    toStopId = i <= j ? to : from;
   }
 
   await prisma.routeClosure.create({
@@ -34,6 +87,9 @@ export async function createClosure(input: ClosureInput) {
       startsAt: data.startsAt,
       endsAt: data.endsAt,
       createdById: session.user.id,
+      kind: data.kind,
+      fromStopId,
+      toStopId,
     },
   });
 

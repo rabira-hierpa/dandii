@@ -10,6 +10,13 @@ import {
   selectFlatFares,
   type FlatFare,
 } from "@/lib/gtfs-fares-format";
+import {
+  applyRouteOverridesToCsv,
+  applyStopOverridesToCsv,
+  applyStopTimeOrderToCsv,
+  applyTripOverridesToCsv,
+} from "@/lib/gtfs-overrides";
+import { hasNoOverrides, type FeedOverrides } from "@/types/gtfs";
 import { prisma } from "@/lib/prisma";
 
 /**
@@ -61,12 +68,105 @@ const REPLACED = new Set([
   "fare_rules.txt",
 ]);
 
+/**
+ * Operator corrections to fold into the exported feed: field patches, entities
+ * created in the console (which have no base-feed row to patch), and tombstoned
+ * ids. All empty in the common case, and then the tables copy verbatim.
+ */
+async function loadFeedOverrides(): Promise<FeedOverrides> {
+  const [stopRows, routeRows, createdStops, createdRoutes, tripRows, orderRows] =
+    await Promise.all([
+    prisma.stopOverride.findMany({
+      select: { stopId: true, name: true, deletedAt: true },
+    }),
+    prisma.routeOverride.findMany({
+      select: {
+        routeId: true,
+        shortName: true,
+        longName: true,
+        color: true,
+        textColor: true,
+        desc: true,
+        url: true,
+        type: true,
+        continuousPickup: true,
+        continuousDropOff: true,
+        deletedAt: true,
+      },
+    }),
+    prisma.stop.findMany({
+      where: { origin: "OPERATOR" },
+      select: { id: true, name: true, lat: true, lon: true },
+    }),
+    prisma.route.findMany({
+      where: { origin: "OPERATOR" },
+      select: {
+        id: true,
+        shortName: true,
+        longName: true,
+        type: true,
+        agencyId: true,
+        color: true,
+        textColor: true,
+      },
+    }),
+    prisma.tripOverride.findMany({
+      select: { tripId: true, blockId: true, headsign: true },
+    }),
+    prisma.routeStopOrderOverride.findMany({
+      select: { routeId: true, directionId: true, stopIds: true },
+    }),
+  ]);
+
+  // The override is keyed by (route, direction) but stop_times.txt is keyed by
+  // trip, so fan it out across the trips that direction actually runs.
+  const stopTimeOrders = new Map<string, string[]>();
+  if (orderRows.length > 0) {
+    const trips = await prisma.trip.findMany({
+      where: { OR: orderRows.map((o) => ({ routeId: o.routeId, directionId: o.directionId })) },
+      select: { id: true, routeId: true, directionId: true },
+    });
+    const orderByKey = new Map(
+      orderRows.map((o) => [`${o.routeId}:${o.directionId}`, o.stopIds as string[]]),
+    );
+    for (const trip of trips) {
+      const order = orderByKey.get(`${trip.routeId}:${trip.directionId}`);
+      if (order) stopTimeOrders.set(trip.id, order);
+    }
+  }
+
+  const routeOverrideById = new Map(routeRows.map((r) => [r.routeId, r]));
+  return {
+    stopNames: stopRows
+      .filter((s) => s.name !== null && s.deletedAt === null)
+      .map((s) => ({ stopId: s.stopId, name: s.name as string })),
+    routeFields: routeRows.filter((r) => r.deletedAt === null),
+    createdStops,
+    tripFields: tripRows,
+    stopTimeOrders,
+    // A created route can also carry an override row (renamed after creation),
+    // so desc/url come from there when present.
+    createdRoutes: createdRoutes.map((r) => ({
+      ...r,
+      desc: routeOverrideById.get(r.id)?.desc ?? null,
+      url: routeOverrideById.get(r.id)?.url ?? null,
+    })),
+    deletedStopIds: stopRows
+      .filter((s) => s.deletedAt !== null)
+      .map((s) => s.stopId),
+    deletedRouteIds: routeRows
+      .filter((r) => r.deletedAt !== null)
+      .map((r) => r.routeId),
+  };
+}
+
 /** Copy the base feed + overlay the three generated files into `filePath`. */
 async function buildZip(
   filePath: string,
   baseDir: string,
   version: number,
   fares: FlatFare[],
+  overrides: FeedOverrides,
 ): Promise<void> {
   const output = createWriteStream(filePath);
   const archive = new ZipArchive({ zlib: { level: 9 } });
@@ -79,9 +179,43 @@ async function buildZip(
 
   archive.pipe(output);
 
+  // Tables with operator edits are rewritten from base + overrides; everything
+  // else is streamed straight from disk, so an unedited feed costs nothing.
+  const edited = new Map<string, (base: string) => string>();
+  if (!hasNoOverrides(overrides)) {
+    edited.set("stops.txt", (base) =>
+      applyStopOverridesToCsv(
+        base,
+        overrides.stopNames,
+        overrides.createdStops,
+        overrides.deletedStopIds,
+      ),
+    );
+    edited.set("routes.txt", (base) =>
+      applyRouteOverridesToCsv(
+        base,
+        overrides.routeFields,
+        overrides.createdRoutes,
+        overrides.deletedRouteIds,
+      ),
+    );
+    edited.set("trips.txt", (base) =>
+      applyTripOverridesToCsv(base, overrides.tripFields),
+    );
+    edited.set("stop_times.txt", (base) =>
+      applyStopTimeOrderToCsv(base, overrides.stopTimeOrders),
+    );
+  }
+
   const entries = await readdir(baseDir);
   for (const name of entries) {
     if (!name.endsWith(".txt") || REPLACED.has(name)) continue;
+    const rewrite = edited.get(name);
+    if (rewrite) {
+      const base = await readFile(path.join(baseDir, name), "utf8");
+      archive.append(rewrite(base), { name });
+      continue;
+    }
     archive.file(path.join(baseDir, name), { name });
   }
 
@@ -110,6 +244,23 @@ async function readBaseRouteIds(baseDir: string): Promise<Set<string>> {
     const id = lines[i].split(",")[idx];
     if (id) ids.add(id);
   }
+  return ids;
+}
+
+/**
+ * route_ids the exported routes.txt will actually contain.
+ *
+ * A fare_rules row naming a route that routes.txt lacks is a GTFS
+ * foreign_key_violation, and the exported file is no longer just the base feed:
+ * operator-created routes are appended to it and tombstoned ones are dropped.
+ */
+async function readExportedRouteIds(
+  baseDir: string,
+  overrides: FeedOverrides,
+): Promise<Set<string>> {
+  const ids = await readBaseRouteIds(baseDir);
+  for (const r of overrides.createdRoutes) ids.add(r.id);
+  for (const id of overrides.deletedRouteIds) ids.delete(id);
   return ids;
 }
 
@@ -154,8 +305,11 @@ export async function generateFeedVersion(
       flatAmountEtb: f.flatAmountEtb?.toNumber() ?? null,
     })),
   );
-  const baseRouteIds = await readBaseRouteIds(baseDir);
-  const fares: FlatFare[] = allFlat.filter((f) => baseRouteIds.has(f.routeId));
+  const overrides = await loadFeedOverrides();
+  const exportedRouteIds = await readExportedRouteIds(baseDir, overrides);
+  const fares: FlatFare[] = allFlat.filter((f) =>
+    exportedRouteIds.has(f.routeId),
+  );
 
   await mkdir(EXPORT_DIR, { recursive: true });
 
@@ -189,7 +343,7 @@ export async function generateFeedVersion(
       fareChangeCount = await prisma.fareChangeLog.count();
     }
 
-    await buildZip(filePath, baseDir, version, fares);
+    await buildZip(filePath, baseDir, version, fares, overrides);
     const { size } = await stat(filePath);
 
     try {

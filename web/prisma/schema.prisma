@@ -41,6 +41,13 @@ model User {
   /// of contributing.
   leaderboardOptIn Boolean @default(false)
 
+  /// Batch D: GTFS corrections this user made (audit trail for the editor).
+  stopOverrides    StopOverride[]
+  routeOverrides   RouteOverride[]
+  stopOrderEdits   RouteStopOrderOverride[]
+  tripEdits        TripOverride[]
+  shapeEdits       ShapeOverride[]
+
   @@unique([email])
   @@map("user")
 }
@@ -106,6 +113,16 @@ enum OperatorCode {
   LRT
 }
 
+/**
+ * Where an entity came from. FEED rows are reloaded from the vendored DT4A feed
+ * on every seed; OPERATOR rows were authored in the console and must survive it.
+ * The seed's deletes are scoped to FEED for exactly this reason.
+ */
+enum EntityOrigin {
+  FEED
+  OPERATOR
+}
+
 enum FareKind {
   FLAT
   TIERED
@@ -116,6 +133,17 @@ enum ClosureReason {
   MAINTENANCE
   POLITICAL_EVENT
   OTHER
+}
+
+/**
+ * How much of a route a closure takes out, and whether vehicles can pass.
+ * SEVERED and SKIPPED carry the same data (a closed stop range) and differ only
+ * in whether through-travel across that range is still possible.
+ */
+enum ClosureKind {
+  WHOLE_ROUTE // entire route out of service (the historical behaviour)
+  SEVERED // road blocked: nothing crosses, so the route is cut in two
+  SKIPPED // vehicle detours: through-travel fine, listed stops not served
 }
 
 model Agency {
@@ -147,11 +175,14 @@ model Route {
   textColor         String?
   agencyId          String
   agency            Agency   @relation(fields: [agencyId], references: [id])
-  // Precomputed LineString geometry: full resolution for detail views,
-  // simplified for the all-routes network layer.
+  // The rider-facing geometry: full resolution for detail views, simplified for
+  // the all-routes network layer. This is ONE direction (outbound) so the public
+  // map draws a single legible line per route rather than a doubled corridor —
+  // see Shape for the per-direction geometry the console needs.
   geojson           Json?
   geojsonSimplified Json?
   lengthMeters      Float?
+  origin            EntityOrigin @default(FEED)
 
   trips         Trip[]
   fare          Fare?
@@ -166,11 +197,12 @@ model Route {
 }
 
 model Stop {
-  id        String     @id
+  id        String       @id
   name      String
   lat       Float
   lon       Float
   stopTimes StopTime[]
+  origin    EntityOrigin @default(FEED)
 
   @@index([name])
   @@map("stop")
@@ -182,12 +214,37 @@ model Trip {
   route       Route       @relation(fields: [routeId], references: [id], onDelete: Cascade)
   serviceId   String
   shapeId     String?
+  shape       Shape?      @relation(fields: [shapeId], references: [id])
+  /// GTFS direction_id. Fully populated in the DT4A feed (447 direction-0 trips,
+  /// 444 direction-1) and previously discarded by the seed. Names which of a
+  /// route's two shapes is which, so riders can be shown one direction.
+  directionId Int?
   headsign    String?
   stopTimes   StopTime[]
   frequencies Frequency[]
 
   @@index([routeId])
+  @@index([shapeId])
   @@map("trip")
+}
+
+/**
+ * One GTFS shape (a single drawn line), keyed by the feed's shape_id.
+ *
+ * Routes almost always have two: 444 of 447 in the DT4A feed run an outbound and
+ * an inbound shape. The seed used to keep only the first and hang it on
+ * `Route.geojson`, which meant the map drew one direction and discarded the
+ * other for 99% of the network. Storing them per shape lets the public map show
+ * one direction and the console show both.
+ */
+model Shape {
+  id                String  @id
+  geojson           Json
+  geojsonSimplified Json
+  lengthMeters      Float?
+  trips             Trip[]
+
+  @@map("shape")
 }
 
 model StopTime {
@@ -269,6 +326,16 @@ model RouteClosure {
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
+  // Partial closures. We store the CLOSED range rather than the open one: a
+  // route has two trips with opposite stop order, and a closed range resolves
+  // correctly against both, whereas "open up to X" needs a direction to mean
+  // anything. Null on both = WHOLE_ROUTE (existing rows are untouched).
+  kind       ClosureKind @default(WHOLE_ROUTE)
+  /// First stop of the closed range, inclusive.
+  fromStopId String?
+  /// Last stop of the closed range, inclusive.
+  toStopId   String?
+
   @@index([routeId, startsAt, endsAt])
   @@map("route_closure")
 }
@@ -284,6 +351,156 @@ model RouteAssignment {
 
   @@index([operatorId])
   @@map("route_assignment")
+}
+
+// ---------------------------------------------------------------------------
+// Operator edits to the vendored GTFS feed.
+//
+// We never mutate the seeded GTFS rows in place: a reseed would wipe the edit,
+// and we'd lose the base-vs-edit distinction that lets an operator see what
+// they changed. Instead each edit is an override row that survives reseed and
+// is re-applied as the seed's final step. A null field means "not edited" and
+// falls back to the base feed value, so an override row can carry one
+// correction without freezing every other field.
+//
+// The GTFS export regenerates the edited tables from base + overrides rather
+// than copying them verbatim (see docs/route-editor-design.md §3).
+// ---------------------------------------------------------------------------
+
+/// A stop-level correction. Today only the name; the DT4A feed has many
+/// near-duplicate stop names ("Megenagna", "Megenagna Taxi") that operators
+/// need to fix without touching geometry.
+/// NOTE: `stopId` is deliberately NOT a foreign key to `stop`. The seed does a
+/// full `stop.deleteMany()` before reloading the feed, so a cascading FK would
+/// wipe every override on each reseed — the exact opposite of the point. The
+/// override outlives the row it annotates and is re-applied afterwards; a
+/// stopId that no longer exists in a newer feed is simply ignored on apply.
+model StopOverride {
+  stopId     String    @id
+  name       String?
+  /// Tombstone — see RouteOverride.deletedAt.
+  deletedAt  DateTime?
+  editedById String
+  editedBy   User     @relation(fields: [editedById], references: [id])
+  editedAt   DateTime @updatedAt
+
+  @@map("stop_override")
+}
+
+/// A route-level correction: display names, map colors, and operator
+/// reassignment (which drives the per-operator `agency_id` in the export).
+/**
+ * An operator-drawn route shape for one direction.
+ *
+ * `waypoints` is what the operator placed and what the editor reopens with;
+ * `geojson` is the road-snapped line built from them. Both are stored on
+ * purpose. Waypoints alone would mean re-snapping on every read — a live OTP
+ * dependency for rendering, and a graph rebuild could silently redraw a shape
+ * someone had already approved. Geometry alone would make the drawing
+ * un-editable: reopening would offer ~130 snapped vertices instead of the
+ * handful of decisions behind them.
+ *
+ * Same no-FK rule as [StopOverride]: the seed deletes and reloads every shape.
+ */
+model ShapeOverride {
+  routeId     String
+  directionId Int
+  /// [{ lat, lon }] in order, as placed by the operator.
+  waypoints   Json
+  /// The snapped LineString actually drawn and exported.
+  geojson     Json
+  /// The feed's own geometry, captured on the FIRST edit only. Saving mirrors
+  /// onto Shape.geojson in place, so without this "reset to feed shape" would
+  /// have nothing to restore short of a full reseed. Null for rows written
+  /// before this column existed.
+  baseGeojson Json?
+  editedById  String
+  editedBy    User     @relation(fields: [editedById], references: [id])
+  editedAt    DateTime @updatedAt
+
+  @@id([routeId, directionId])
+  @@map("shape_override")
+}
+
+/**
+ * Per-trip corrections.
+ *
+ * `blockId` is GTFS block_id — which vehicle runs which trips back to back, so
+ * a rider staying aboard between two "different" trips isn't told to alight and
+ * reboard. The DT4A feed has no block_id column at all, so this is purely
+ * operator knowledge, and emitting it means widening trips.txt on export.
+ *
+ * Same no-FK rule as [StopOverride]: the seed deletes and reloads every trip,
+ * and a cascade here would erase the operator's work on each reseed.
+ */
+model TripOverride {
+  tripId     String   @id
+  blockId    String?
+  headsign   String?
+  editedById String
+  editedBy   User     @relation(fields: [editedById], references: [id])
+  editedAt   DateTime @updatedAt
+
+  @@map("trip_override")
+}
+
+/**
+ * An operator-reordered stop sequence for one direction of one route.
+ *
+ * Stored as the whole ordered list rather than a diff: a reorder is only
+ * meaningful as a complete sequence, and replaying "move index 3 to 5" against
+ * a feed whose stops changed underneath would corrupt the route silently.
+ *
+ * Applied to every trip in the direction. Times stay with the POSITION, not the
+ * stop — a run reaches its 5th call at 06:20 whichever stop that is, and
+ * carrying times along with stops would produce a non-monotonic timetable that
+ * fails GTFS validation.
+ *
+ * Same no-FK rule as [StopOverride] so a reseed cannot cascade it away.
+ */
+model RouteStopOrderOverride {
+  routeId     String
+  directionId Int
+  /// Ordered GTFS stop ids, first call to last.
+  stopIds     String[]
+  editedById  String
+  editedBy    User     @relation(fields: [editedById], references: [id])
+  editedAt    DateTime @updatedAt
+
+  @@id([routeId, directionId])
+  @@map("route_stop_order_override")
+}
+
+/// Same no-FK rule as [StopOverride]: routes are normally upserted by the seed,
+/// but the fresh-reseed path does `route.deleteMany()`, and overrides must
+/// survive that.
+model RouteOverride {
+  routeId      String        @id
+  shortName    String?
+  longName     String?
+  color        String?
+  textColor    String?
+  operatorCode OperatorCode?
+  /// GTFS route_desc / route_url. Empty across the whole Addis feed today —
+  /// stored anyway because operators fill them in and they ship in the next
+  /// generated feed version.
+  desc         String?
+  url          String?
+  /// GTFS route_type, editable (base value lives on Route.type).
+  type         Int?
+  /// GTFS continuous_pickup / continuous_drop_off. Neither is a column in the
+  /// base feed, so the exporter has to widen the header to emit them. Relevant
+  /// here: Addis minibuses genuinely do board anywhere along the line.
+  continuousPickup  Int?
+  continuousDropOff Int?
+  /// Tombstone. Deleting a FEED row outright is a lie — the next reseed brings
+  /// it back — so deletion is recorded here and applied after the reload.
+  deletedAt    DateTime?
+  editedById   String
+  editedBy     User          @relation(fields: [editedById], references: [id])
+  editedAt     DateTime      @updatedAt
+
+  @@map("route_override")
 }
 
 // ---------------------------------------------------------------------------

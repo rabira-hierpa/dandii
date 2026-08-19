@@ -1,17 +1,61 @@
 import { prisma } from "@/lib/prisma";
+import type { ClosureKind } from "@/lib/closures";
 
 /** A route is closed iff an active closure overlaps `now`. */
 export function activeClosureFilter(now = new Date()) {
   return { startsAt: { lte: now }, endsAt: { gte: now } };
 }
 
-/** Set of routeIds that are currently closed. */
+/**
+ * Route ids with an active WHOLE_ROUTE closure only.
+ * Partial (SEVERED/SKIPPED) disruptions must not count as fully closed for
+ * KPIs / CSV — use active closure records + geo segment features instead.
+ */
 export async function getClosedRouteIds(now = new Date()) {
   const closures = await prisma.routeClosure.findMany({
-    where: activeClosureFilter(now),
+    where: { ...activeClosureFilter(now), kind: "WHOLE_ROUTE" },
     select: { routeId: true },
   });
   return new Set(closures.map((c) => c.routeId));
+}
+
+export type ActiveClosureRow = {
+  routeId: string;
+  kind: ClosureKind;
+  fromStopId: string | null;
+  toStopId: string | null;
+};
+
+/** All active closures (any kind) for planner / geo / OTP. */
+export async function getActiveClosures(
+  now = new Date(),
+): Promise<ActiveClosureRow[]> {
+  const rows = await prisma.routeClosure.findMany({
+    where: activeClosureFilter(now),
+    select: {
+      routeId: true,
+      kind: true,
+      fromStopId: true,
+      toStopId: true,
+    },
+  });
+  return rows.map((r) => ({
+    routeId: r.routeId,
+    kind: r.kind as ClosureKind,
+    fromStopId: r.fromStopId,
+    toStopId: r.toStopId,
+  }));
+}
+
+/** Route ids to feed OTP `banned.routes` (WHOLE_ROUTE + SEVERED). */
+export function otpBanRouteIds(closures: ActiveClosureRow[]): string[] {
+  return [
+    ...new Set(
+      closures
+        .filter((c) => c.kind === "WHOLE_ROUTE" || c.kind === "SEVERED")
+        .map((c) => c.routeId),
+    ),
+  ];
 }
 
 export interface FareSummary {

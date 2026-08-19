@@ -1,8 +1,10 @@
 import type { NextRequest } from "next/server";
+import { closedWindow, type ClosureRange } from "@/lib/closures";
 import { findDirectRoutes, type DirectionsAnchor } from "@/lib/directions";
 import { OPERATOR_CODES, type OperatorCode } from "@/lib/operators";
 import { planTransferJourneys } from "@/lib/otp-fallback";
 import { prisma } from "@/lib/prisma";
+import { getActiveClosures, otpBanRouteIds } from "@/lib/transit";
 
 const OPERATOR_SET = new Set<string>(OPERATOR_CODES);
 
@@ -29,7 +31,6 @@ export async function GET(request: NextRequest) {
     .map((c) => c.trim().toUpperCase())
     .filter((c) => OPERATOR_SET.has(c)) as OperatorCode[];
 
-  // Resolve the two anchor stops (both endpoints are always DB stops).
   const stops = await prisma.stop.findMany({
     where: { id: { in: [fromId, toId] } },
     select: { id: true, name: true, lat: true, lon: true },
@@ -44,11 +45,18 @@ export async function GET(request: NextRequest) {
   const anchorTo: DirectionsAnchor = destination;
   const direct = await findDirectRoutes(anchorFrom, anchorTo, operators);
 
-  // Only reach for OTP (transfers) when no single-seat ride covers the trip.
-  const fallback =
-    direct.length === 0
-      ? await planTransferJourneys(anchorFrom, anchorTo, operators)
-      : [];
+  let fallback: Awaited<ReturnType<typeof planTransferJourneys>> = [];
+  if (direct.length === 0) {
+    const active = await getActiveClosures();
+    const bannedRouteIds = otpBanRouteIds(active);
+    const skippedStopNames = await skippedStopNameSet(active);
+
+    fallback = await planTransferJourneys(anchorFrom, anchorTo, {
+      operators,
+      bannedRouteIds,
+      skippedStopNames,
+    });
+  }
 
   return Response.json({
     origin: anchorFrom,
@@ -56,4 +64,41 @@ export async function GET(request: NextRequest) {
     direct,
     fallback,
   });
+}
+
+/** Lowercased stop names inside every active SKIPPED closure range. */
+async function skippedStopNameSet(
+  active: Awaited<ReturnType<typeof getActiveClosures>>,
+): Promise<Set<string>> {
+  const skipped = active.filter((c) => c.kind === "SKIPPED");
+  const names = new Set<string>();
+  if (skipped.length === 0) return names;
+
+  for (const c of skipped) {
+    if (!c.fromStopId || !c.toStopId) continue;
+    const trip = await prisma.trip.findFirst({
+      where: { routeId: c.routeId },
+      orderBy: { id: "asc" },
+      select: {
+        stopTimes: {
+          orderBy: { sequence: "asc" },
+          select: { stop: { select: { id: true, name: true } } },
+        },
+      },
+    });
+    if (!trip) continue;
+    const stopNames = trip.stopTimes.map((st) => st.stop);
+    const range: ClosureRange = {
+      kind: "SKIPPED",
+      fromStopId: c.fromStopId,
+      toStopId: c.toStopId,
+    };
+    const seqById = new Map(stopNames.map((s, i) => [s.id, i]));
+    const w = closedWindow(range, seqById);
+    if (!w) continue;
+    for (const s of stopNames.slice(w.start, w.end + 1)) {
+      names.add(s.name.trim().toLowerCase());
+    }
+  }
+  return names;
 }

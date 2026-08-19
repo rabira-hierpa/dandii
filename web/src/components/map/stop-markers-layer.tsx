@@ -9,7 +9,11 @@ export interface MapStop {
   lon: number;
 }
 
-function toFeatureCollection(stops: MapStop[], extra?: Record<string, unknown>) {
+function toFeatureCollection(
+  stops: MapStop[],
+  closedIds: ReadonlySet<string> | undefined,
+  extra?: Record<string, unknown>,
+) {
   return {
     type: "FeatureCollection" as const,
     features: stops.map((stop, index) => ({
@@ -18,7 +22,13 @@ function toFeatureCollection(stops: MapStop[], extra?: Record<string, unknown>) 
         type: "Point" as const,
         coordinates: [stop.lon, stop.lat],
       },
-      properties: { stopId: stop.id, name: stop.name, index, ...extra },
+      properties: {
+        stopId: stop.id,
+        name: stop.name,
+        index,
+        closed: closedIds?.has(stop.id) ?? false,
+        ...extra,
+      },
     })),
   };
 }
@@ -31,6 +41,8 @@ interface StopMarkersLayerProps {
   visible?: boolean;
   /** Larger markers with stronger halo when drawn over a thick route line. */
   onLine?: boolean;
+  /** Stops temporarily out of service (partial/whole closure). */
+  closedStopIds?: ReadonlySet<string>;
 }
 
 export function StopMarkersLayer({
@@ -39,14 +51,16 @@ export function StopMarkersLayer({
   variant,
   visible = true,
   onLine = false,
+  closedStopIds,
 }: StopMarkersLayerProps) {
   if (!visible || stops.length === 0) return null;
 
-  const data = toFeatureCollection(stops, { variant });
+  const data = toFeatureCollection(stops, closedStopIds, { variant });
   const isHub = variant === "hub";
   const haloRadius = isHub ? 7 : onLine ? 12 : 9;
   const dotRadius = isHub ? 4.5 : onLine ? 6.5 : 5.5;
   const strokeWidth = isHub ? 1.5 : onLine ? 3 : 2;
+  const openColor = isHub ? "#15803D" : "#152018";
 
   return (
     <Source id={`${id}-source`} type="geojson" data={data}>
@@ -66,7 +80,12 @@ export function StopMarkersLayer({
         type="circle"
         paint={{
           "circle-radius": dotRadius,
-          "circle-color": isHub ? "#15803D" : "#152018",
+          "circle-color": [
+            "case",
+            ["==", ["get", "closed"], true],
+            "#EA580C",
+            openColor,
+          ],
           "circle-stroke-width": strokeWidth,
           "circle-stroke-color": "#FFFFFF",
         }}
@@ -85,7 +104,12 @@ export function StopMarkersLayer({
           "text-optional": true,
         }}
         paint={{
-          "text-color": "#1C2321",
+          "text-color": [
+            "case",
+            ["==", ["get", "closed"], true],
+            "#9A3412",
+            "#1C2321",
+          ],
           "text-halo-color": "#FFFFFF",
           "text-halo-width": 1.5,
         }}

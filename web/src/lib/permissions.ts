@@ -21,6 +21,15 @@ export const statement = {
   // write role — the same set that reviews proposals — so a maintainer can
   // publish a feed after approving corrections.
   feed: ["generate"],
+  // Batch D — correcting the vendored GTFS feed itself (override rows), kept
+  // separate from `route:update` because that governs console metadata such as
+  // operator assignment, while these rewrite what riders see on the map.
+  //   edit    — route fields: names, colors, operator (5a)
+  //   rename  — stop names (5c-rename)
+  //   shape   — stop sequence and route geometry (5b / 5c-shape)
+  //   publish — reseed + OTP rebuild, so the edits reach riders. Admin+ only:
+  //             it takes the whole network down for a graph rebuild.
+  feedEdit: ["edit", "rename", "shape", "publish"],
   system: ["settings"],
 } as const;
 
@@ -33,6 +42,7 @@ export const superAdminRole = ac.newRole({
   closure: ["read", "create", "update", "delete"],
   proposal: ["review"],
   feed: ["generate"],
+  feedEdit: ["edit", "rename", "shape", "publish"],
   system: ["settings"],
 });
 
@@ -45,6 +55,7 @@ export const adminRole = ac.newRole({
   closure: ["read", "create", "update", "delete"],
   proposal: ["review"],
   feed: ["generate"],
+  feedEdit: ["edit", "rename", "shape", "publish"],
   system: ["settings"],
 });
 
@@ -55,6 +66,8 @@ export const routeOperatorRole = ac.newRole({
   closure: ["read", "create", "update", "delete"],
   proposal: ["review"],
   feed: ["generate"],
+  // Everything except publish — a reseed + OTP rebuild is admin+ only.
+  feedEdit: ["edit", "rename", "shape"],
 });
 
 export const maintainerRole = ac.newRole({

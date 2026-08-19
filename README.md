@@ -12,8 +12,15 @@ operations console for transport officials.
   search, route detail sheet (stops, headways, fares, closure banners),
   and an OpenTripPlanner-powered journey planner.
 - **Operations console** (`/console`) — Agency Overview, Route Assignment
-  (map route_ids to operators), Network Map (open/close routes with a
-  reason and date range), and Fare Management (flat vs tiered ETB pricing).
+  (map route_ids to operators), Network Map, and Fare Management (flat vs
+  tiered ETB pricing).
+- **Feed editor** (console → Network Map → pick a route) — correct the
+  vendored GTFS without waiting on DT4A. Tabs for Details, Stops, Trips,
+  Shapes, and Service: edit route metadata, rename/create/delete/reorder
+  stops, set `block_id`, draw a route line snapped to the OSM road network,
+  and close a route in whole or between two stops. Every edit is stored as
+  an override beside the feed row, so reloading the vendored feed replays
+  the edit instead of losing it, and the exported GTFS zip carries it.
 - **Settings** (`/settings`) — profile, member/role management, and system
   info.
 - **RBAC** — four staff roles (`super-admin`, `admin`, `route-operator`,

@@ -1,5 +1,24 @@
 # TODOS
 
+## P1 — Operator scoping + Amharic (2026-08-19)
+
+- [x] Invitation workflow scoped per operator. The first cut invited people to
+      a *role*, which left the operator picker decorative: any route-operator
+      could edit LRT's routes and reassign them to themselves. `Invitation`
+      and `User` now carry `operatorCode`, `lib/operator-scope.ts` enforces it
+      on all twelve feed-edit mutations plus updateRoute/bulkAssignRoutes, and
+      `setMemberRole` replaced the client-side better-auth `setRole` that knew
+      nothing about the column (demoting an admin through it left the scope
+      null — i.e. network-wide). 37 tests.
+- [x] Amharic stop names reach the published feed. The console could set one
+      and the seed could read one, but the exporter wrote neither, so a typed
+      name showed on our map and nowhere else. `translations.txt` is now
+      generated from the effective names, keyed by `record_id` because 2,271
+      stops share 858 names. Verified: v5 carries 243 rows, v4 had no file.
+- [ ] Amharic coverage is 243/2270 stops (10.7%) — the 31 curated hubs plus
+      their duplicates. By design: the pipeline is built, operators fill the
+      rest in from the Stops tab.
+
 ## P1 — Deferred from fare-registry plan (ship 2026-07-23)
 
 - [ ] Console fare-history UI (FareChangeLog exists; no console surface yet)

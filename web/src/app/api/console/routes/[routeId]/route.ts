@@ -63,7 +63,14 @@ export async function GET(
             arrival: true,
             departure: true,
             stop: {
-              select: { id: true, name: true, lat: true, lon: true, origin: true },
+              select: {
+                id: true,
+                name: true,
+                nameAm: true,
+                lat: true,
+                lon: true,
+                origin: true,
+              },
             },
           },
         },
@@ -155,6 +162,7 @@ export async function GET(
     stopsByDirection[dir] = trip.stopTimes.map((st) => ({
       id: st.stop.id,
       name: st.stop.name,
+      nameAm: st.stop.nameAm,
       lat: st.stop.lat,
       lon: st.stop.lon,
       sequence: st.sequence,

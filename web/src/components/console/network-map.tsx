@@ -556,6 +556,19 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
               onResetShape={shape.onResetShapeFromMenu}
             />
           )}
+          {/* The console pulls both directions of 891 shapes at full drawing
+              fidelity — a few megabytes. Without this the map paints an empty
+              basemap first and the network pops in, which reads as "no routes"
+              rather than "still loading". */}
+          {!geojson && (
+            <div
+              role="status"
+              aria-live="polite"
+              className="pointer-events-none absolute top-2.5 left-2.5 z-10 rounded-lg border border-[#E2E6DE] bg-white/95 px-2.5 py-1.5 text-[12.5px] text-[#5C6B5E] shadow-sm backdrop-blur"
+            >
+              Loading routes…
+            </div>
+          )}
           {hover.route && (
             <div className="pointer-events-none absolute top-2.5 left-2.5 z-10 flex max-w-[80%] items-center gap-2 rounded-lg border border-[#E2E6DE] bg-white/95 px-2.5 py-1.5 shadow-sm backdrop-blur">
               <RouteChip

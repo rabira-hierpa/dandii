@@ -31,6 +31,12 @@ export const statement = {
   //             it takes the whole network down for a graph rebuild.
   feedEdit: ["edit", "rename", "shape", "publish"],
   system: ["settings"],
+  // Inviting a new console member (or upgrading an existing account) to a
+  // role. Held by the same roles that manage members in Settings — a
+  // narrower slice of `user` management, kept as its own resource so an
+  // invitation's role is checked against ASSIGNABLE_ROLES independent of
+  // better-auth's own `user:set-role` gate.
+  invitation: ["create", "revoke"],
 } as const;
 
 export const ac = createAccessControl(statement);
@@ -44,6 +50,7 @@ export const superAdminRole = ac.newRole({
   feed: ["generate"],
   feedEdit: ["edit", "rename", "shape", "publish"],
   system: ["settings"],
+  invitation: ["create", "revoke"],
 });
 
 export const adminRole = ac.newRole({
@@ -57,6 +64,7 @@ export const adminRole = ac.newRole({
   feed: ["generate"],
   feedEdit: ["edit", "rename", "shape", "publish"],
   system: ["settings"],
+  invitation: ["create", "revoke"],
 });
 
 export const routeOperatorRole = ac.newRole({
@@ -94,6 +102,9 @@ export const roles = {
 } as const;
 
 export type AppRole = keyof typeof roles;
+
+/** Every assignable role, as a runtime tuple — for zod enums and iteration. */
+export const APP_ROLES = Object.keys(roles) as [AppRole, ...AppRole[]];
 
 /** Roles allowed into the ops console at all. */
 export const CONSOLE_ROLES: AppRole[] = [

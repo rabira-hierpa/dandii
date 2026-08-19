@@ -9,9 +9,11 @@ import {
   stopIdSchema,
   stopRenameSchema,
   stopReorderSchema,
+  stopTranslateSchema,
   type StopCreateInput,
   type StopRenameInput,
   type StopReorderInput,
+  type StopTranslateInput,
 } from "./stop-edit-schema";
 
 function revalidateConsole() {
@@ -78,6 +80,59 @@ export async function renameStop(input: StopRenameInput) {
         data: { name: data.name },
       });
     }
+  }
+
+  revalidateConsole();
+  return { ok: true as const };
+}
+
+/**
+ * Set (or clear) a stop's Amharic display name.
+ *
+ * Same permission and OPERATOR/FEED split as `renameStop` — this is the same
+ * kind of naming correction, just a different field. Kept as its own action
+ * rather than folded into `renameStop` so the console can offer "edit
+ * English" and "edit Amharic" as separate, smaller commits instead of one
+ * combined form each caller has to fill out in full.
+ */
+export async function setStopNameAm(input: StopTranslateInput) {
+  const session = await requirePermission({ feedEdit: ["rename"] });
+
+  let data;
+  try {
+    data = stopTranslateSchema.parse(input);
+  } catch (err) {
+    return zodError(err, "Invalid Amharic name");
+  }
+
+  const stop = await prisma.stop.findUnique({
+    where: { id: data.stopId },
+    select: { id: true, origin: true },
+  });
+  if (!stop) return { ok: false as const, error: "Stop not found" };
+
+  if (stop.origin === "OPERATOR") {
+    await prisma.stop.update({
+      where: { id: stop.id },
+      data: { nameAm: data.nameAm },
+    });
+  } else {
+    await prisma.stopOverride.upsert({
+      where: { stopId: stop.id },
+      create: {
+        stopId: stop.id,
+        nameAm: data.nameAm,
+        editedById: session.user.id,
+      },
+      update: { nameAm: data.nameAm, editedById: session.user.id },
+    });
+    // Mirror immediately, same reasoning as renameStop: a null clears the
+    // override but only a reseed actually restores the feed's own value (it
+    // has none today, so this just goes blank until one is added).
+    await prisma.stop.update({
+      where: { id: stop.id },
+      data: { nameAm: data.nameAm },
+    });
   }
 
   revalidateConsole();

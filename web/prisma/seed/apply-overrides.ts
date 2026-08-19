@@ -13,7 +13,7 @@
  * rather than deleted — the id may come back in the next feed revision, and
  * silently dropping an operator's work is worse than carrying a dead row.
  */
-import type { PrismaClient } from "../../src/generated/prisma/client";
+import type { Prisma, PrismaClient } from "../../src/generated/prisma/client";
 import type { OperatorCode } from "../../src/generated/prisma/enums";
 
 export interface OverrideApplyResult {
@@ -25,6 +25,7 @@ export interface OverrideApplyResult {
   stopTimesRemoved: number;
   directionsReordered: number;
   tripsEdited: number;
+  shapesRedrawn: number;
   skipped: number;
 }
 
@@ -40,6 +41,7 @@ export async function applyOverrides(
     stopTimesRemoved: 0,
     directionsReordered: 0,
     tripsEdited: 0,
+    shapesRedrawn: 0,
     skipped: 0,
   };
 
@@ -47,6 +49,7 @@ export async function applyOverrides(
   result.skipped += await applyRouteOverrides(prisma, result);
   result.skipped += await applyStopOrderOverrides(prisma, result);
   result.skipped += await applyTripOverrides(prisma, result);
+  result.skipped += await applyShapeOverrides(prisma, result);
   return result;
 }
 
@@ -177,8 +180,11 @@ async function applyStopOverrides(
   }
 
   const overrides = await prisma.stopOverride.findMany({
-    where: { name: { not: null }, deletedAt: null },
-    select: { stopId: true, name: true },
+    where: {
+      deletedAt: null,
+      OR: [{ name: { not: null } }, { nameAm: { not: null } }],
+    },
+    select: { stopId: true, name: true, nameAm: true },
   });
   if (overrides.length === 0) return 0;
 
@@ -199,7 +205,10 @@ async function applyStopOverrides(
     }
     await prisma.stop.update({
       where: { id: o.stopId },
-      data: { name: o.name as string },
+      data: {
+        ...(o.name !== null ? { name: o.name } : {}),
+        ...(o.nameAm !== null ? { nameAm: o.nameAm } : {}),
+      },
     });
     result.stopsRenamed++;
   }
@@ -304,4 +313,71 @@ async function reassignOperator(
     create: { routeId, operatorId },
     update: { operatorId },
   });
+}
+
+/**
+ * Replay operator-drawn route geometry.
+ *
+ * A reseed reloads the vendored feed's shapes, so without this every line an
+ * operator drew is silently replaced by DT4A's original the next time the feed
+ * is loaded — the one edit whose whole point is that the feed is wrong about
+ * where the road goes.
+ *
+ * The stored `geojson` is the line the server snapped and approved, so it is
+ * written back verbatim rather than re-snapped: OTP's graph moves between
+ * rebuilds, and re-snapping would let a graph update quietly redraw geometry a
+ * human signed off on.
+ */
+async function applyShapeOverrides(
+  prisma: PrismaClient,
+  result: OverrideApplyResult,
+): Promise<number> {
+  const overrides = await prisma.shapeOverride.findMany({
+    select: { routeId: true, directionId: true, geojson: true },
+  });
+  if (overrides.length === 0) return 0;
+
+  let skipped = 0;
+  for (const override of overrides) {
+    const coords = (override.geojson as { coordinates?: number[][] } | null)
+      ?.coordinates;
+    if (!coords || coords.length < 2) {
+      skipped++;
+      continue;
+    }
+
+    const trips = await prisma.trip.findMany({
+      where: {
+        routeId: override.routeId,
+        directionId: override.directionId,
+        shapeId: { not: null },
+      },
+      select: { shapeId: true },
+    });
+    const shapeIds = [...new Set(trips.map((t) => t.shapeId as string))];
+    if (shapeIds.length === 0) {
+      // The route or direction is gone in this feed revision.
+      skipped++;
+      continue;
+    }
+
+    const geojson = {
+      type: "LineString",
+      coordinates: coords,
+    } as unknown as Prisma.InputJsonValue;
+
+    await prisma.shape.updateMany({
+      where: { id: { in: shapeIds } },
+      data: { geojson, geojsonSimplified: geojson },
+    });
+    // The rider map draws the outbound shape (see seed/index.ts).
+    if (override.directionId === 0) {
+      await prisma.route.updateMany({
+        where: { id: override.routeId },
+        data: { geojson, geojsonSimplified: geojson },
+      });
+    }
+    result.shapesRedrawn++;
+  }
+  return skipped;
 }

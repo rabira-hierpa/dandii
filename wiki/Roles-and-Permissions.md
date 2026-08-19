@@ -45,6 +45,10 @@ The access-control statement groups capabilities by resource: `route`, `fare`, `
 | `super-admin` | super-admin, admin, route-operator, maintainer, user |
 | `admin` | route-operator, maintainer, user |
 
+## Inviting members
+
+Super-admins and admins can invite a new console member (or upgrade an existing account) by email from **Settings → Invitations**, without touching `admin.createUser` directly. The invited role is checked against `ASSIGNABLE_ROLES` at send time — an admin cannot invite someone as `admin` or `super-admin` any more than they could set that role directly. See [Operations Console](Operations-Console#how-to-invite-someone-new) for the flow.
+
 ## Enforcement (defense in depth)
 
 1. **Proxy** (`proxy.ts`) — cookie gate; unauthenticated requests to `/console` and `/settings` are redirected to sign-in.

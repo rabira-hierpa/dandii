@@ -48,6 +48,11 @@ model User {
   tripEdits        TripOverride[]
   shapeEdits       ShapeOverride[]
 
+  /// Console invitations this user sent (super-admin/admin) and, separately,
+  /// the invitation whose acceptance created or upgraded this account.
+  sentInvitations     Invitation[] @relation("InvitationsSent")
+  acceptedInvitations Invitation[] @relation("InvitationsAccepted")
+
   @@unique([email])
   @@map("user")
 }
@@ -199,6 +204,11 @@ model Route {
 model Stop {
   id        String       @id
   name      String
+  /// Amharic display name (Ge'ez script). Sourced from the feed's
+  /// translations.txt when present, otherwise set by an operator in the
+  /// console (see StopOverride.nameAm) or seeded for known hubs. Null means
+  /// no Amharic name yet — the UI falls back to `name`.
+  nameAm    String?
   lat       Float
   lon       Float
   stopTimes StopTime[]
@@ -378,6 +388,8 @@ model RouteAssignment {
 model StopOverride {
   stopId     String    @id
   name       String?
+  /// Amharic name correction — same null-means-untouched convention as `name`.
+  nameAm     String?
   /// Tombstone — see RouteOverride.deletedAt.
   deletedAt  DateTime?
   editedById String
@@ -719,4 +731,51 @@ model UserBadge {
   @@id([userId, badge])
   @@index([userId])
   @@map("user_badge")
+}
+
+// ---------------------------------------------------------------------------
+// Console invitations
+// ---------------------------------------------------------------------------
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+  EXPIRED
+}
+
+/**
+ * An invitation for a specific email to join the console with a specific
+ * role, sent by a super-admin or admin.
+ *
+ * The app has no email/password signup (Google OAuth only), so acceptance
+ * rides the existing sign-in flow rather than adding a second one: the
+ * invitee opens `/invite/[token]`, signs in with Google, and — only if the
+ * authenticated email matches `email` (case-insensitively) — the accept
+ * action grants `role` and marks this row ACCEPTED. This also covers
+ * re-inviting an existing account to a new role, not just brand-new users.
+ */
+model Invitation {
+  id     String @id @default(cuid())
+  email  String
+  /// One of AppRole (@/lib/permissions). Not a DB enum: it must stay in sync
+  /// with the access-control statement, which is TypeScript, not SQL.
+  role   String
+  token  String @unique
+
+  status InvitationStatus @default(PENDING)
+
+  invitedById String
+  invitedBy   User   @relation("InvitationsSent", fields: [invitedById], references: [id])
+
+  acceptedUserId String?
+  acceptedUser   User?     @relation("InvitationsAccepted", fields: [acceptedUserId], references: [id])
+  acceptedAt     DateTime?
+
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([email])
+  @@index([status])
+  @@map("invitation")
 }

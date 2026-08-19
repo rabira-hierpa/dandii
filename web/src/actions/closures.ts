@@ -5,9 +5,13 @@ import { ZodError } from "zod";
 import { MAINTAINER_REASONS } from "@/lib/operators";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/lib/session";
+import { invalidateClosureCache } from "@/lib/transit";
 import { closureSchema, type ClosureInput } from "./closure-schema";
 
 function revalidateConsole() {
+  // Closures are cached for a few seconds on the directions hot path; a write
+  // has to drop that read or the operator watches their own change not happen.
+  invalidateClosureCache();
   revalidatePath("/console");
   revalidatePath("/console/routes");
   revalidatePath("/console/network");

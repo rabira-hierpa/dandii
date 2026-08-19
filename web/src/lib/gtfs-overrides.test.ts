@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   applyRouteOverridesToCsv,
+  applyShapeOverridesToCsv,
   applyStopOverridesToCsv,
   applyStopTimeOrderToCsv,
   applyTripOverridesToCsv,
@@ -407,5 +408,111 @@ describe("applyStopTimeOrderToCsv", () => {
     expect(applyStopTimeOrderToCsv(STOPS_CSV, new Map([["t1", ["a"]]]))).toBe(
       STOPS_CSV,
     );
+  });
+});
+
+/** Column order mirrors data/gtfs-2026/combined/shapes.txt exactly. */
+const SHAPES_CSV = `shape_id,shape_pt_lat,shape_pt_lon,shape_pt_sequence,shape_dist_traveled
+s1,9.0107,38.7613,1,
+s1,9.0150,38.7650,2,
+s1,9.0184,38.7681,3,
+s2,9.0300,38.7800,1,
+s2,9.0350,38.7850,2,
+`;
+
+const shapeRows = (csv: string) =>
+  csv
+    .trim()
+    .split("\n")
+    .slice(1)
+    .map((line) => {
+      const c = line.split(",");
+      return { id: c[0], lat: c[1], lon: c[2], seq: c[3] };
+    });
+
+describe("applyShapeOverridesToCsv", () => {
+  it("returns the feed untouched when nothing was drawn", () => {
+    expect(applyShapeOverridesToCsv(SHAPES_CSV, new Map())).toBe(SHAPES_CSV);
+  });
+
+  it("replaces a drawn shape's block outright", () => {
+    // The operator redrew the line; the old vertices are not corrections to
+    // apply, they are the thing being replaced.
+    const drawn: [number, number][] = [
+      [38.7, 9.0],
+      [38.71, 9.01],
+      [38.72, 9.02],
+      [38.73, 9.03],
+    ];
+
+    const out = applyShapeOverridesToCsv(
+      SHAPES_CSV,
+      new Map([["s1", drawn]]),
+    );
+
+    const s1 = shapeRows(out).filter((r) => r.id === "s1");
+    expect(s1).toHaveLength(4);
+    expect(s1.map((r) => r.lon)).toEqual(["38.7", "38.71", "38.72", "38.73"]);
+  });
+
+  it("renumbers points from 1", () => {
+    const out = applyShapeOverridesToCsv(
+      SHAPES_CSV,
+      new Map([["s1", [[38.7, 9.0], [38.71, 9.01]] as [number, number][]]]),
+    );
+
+    expect(shapeRows(out).filter((r) => r.id === "s1").map((r) => r.seq)).toEqual([
+      "1",
+      "2",
+    ]);
+  });
+
+  it("leaves other shapes exactly as they were", () => {
+    const out = applyShapeOverridesToCsv(
+      SHAPES_CSV,
+      new Map([["s1", [[38.7, 9.0], [38.71, 9.01]] as [number, number][]]]),
+    );
+
+    const s2 = shapeRows(out).filter((r) => r.id === "s2");
+    expect(s2.map((r) => [r.lat, r.lon])).toEqual([
+      ["9.0300", "38.7800"],
+      ["9.0350", "38.7850"],
+    ]);
+  });
+
+  it("ignores a drawing for a shape the feed does not have", () => {
+    const out = applyShapeOverridesToCsv(
+      SHAPES_CSV,
+      new Map([["ghost", [[38.7, 9.0], [38.71, 9.01]] as [number, number][]]]),
+    );
+
+    expect(shapeRows(out)).toHaveLength(5);
+  });
+
+  it("ignores a drawing too short to be a line", () => {
+    const out = applyShapeOverridesToCsv(
+      SHAPES_CSV,
+      new Map([["s1", [[38.7, 9.0]] as [number, number][]]]),
+    );
+
+    expect(shapeRows(out).filter((r) => r.id === "s1")).toHaveLength(3);
+  });
+
+  it("preserves the base header", () => {
+    const out = applyShapeOverridesToCsv(
+      SHAPES_CSV,
+      new Map([["s1", [[38.7, 9.0], [38.71, 9.01]] as [number, number][]]]),
+    );
+
+    expect(out.split("\n")[0]).toBe(SHAPES_CSV.split("\n")[0]);
+  });
+
+  it("returns the content untouched when the table isn't shapes", () => {
+    expect(
+      applyShapeOverridesToCsv(
+        STOPS_CSV,
+        new Map([["s1", [[38.7, 9.0], [38.71, 9.01]] as [number, number][]]]),
+      ),
+    ).toBe(STOPS_CSV);
   });
 });

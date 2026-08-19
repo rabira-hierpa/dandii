@@ -38,7 +38,31 @@ export function groupShapes(
   return result;
 }
 
-const SIMPLIFY_TOLERANCE = 0.0001;
+/**
+ * Douglas-Peucker tolerance, in degrees, for the geometry both maps render.
+ *
+ * At Addis latitude one degree of longitude is ~110 km, so this is about **1.1
+ * metres** of allowed deviation from the true road centreline.
+ *
+ * It used to be `0.0001` (~11 m), which kept 12% of each shape's vertices and
+ * put the drawn line up to 13.8 m off the road — measured over 58 shapes and
+ * 10,406 points. Below zoom 15 that is invisible; at zoom 17 it is 6-12 pixels
+ * and a curve renders as a visible polygon, which is why route lines cut
+ * straight across the Megenagna roundabout instead of following it. Operators
+ * drawing a shape were comparing their work against a line that was itself
+ * wrong.
+ *
+ * The measured cost of the change, over 119 routes:
+ *
+ *   tolerance    pts/route   p90 dev   max dev   payload
+ *   0.0001            27      6.8 m    11.0 m    0.22 MB
+ *   0.00001          102      0.7 m     1.1 m    0.82 MB
+ *   0 (no simplify)  234        0         0      1.87 MB
+ *
+ * 1.1 m is sub-pixel below zoom 19, so this buys the last of the visible error
+ * without paying for the full geometry.
+ */
+const SIMPLIFY_TOLERANCE = 0.00001;
 
 export function buildRouteGeometry(
   coordinates: [number, number][],
@@ -47,7 +71,11 @@ export function buildRouteGeometry(
   const line = lineString(coordinates);
   const simplified = simplify(line, {
     tolerance: SIMPLIFY_TOLERANCE,
-    highQuality: false,
+    // Pure Douglas-Peucker. The fast path prepends a radial-distance pass that
+    // drops points on its own, which is why stored geometry measured 13.8 m of
+    // error where the tolerance alone predicts 11.0 m. Same tolerance, less
+    // error, and the seed runs once.
+    highQuality: true,
     mutate: false,
   });
   return {

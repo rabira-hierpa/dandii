@@ -22,6 +22,7 @@ import {
   deleteStop,
   renameStop,
   reorderRouteStops,
+  setStopNameAm,
 } from "@/actions/stop-edit";
 import { SortableStopRow } from "@/components/console/sortable-stop-row";
 import { useRouteEditorStore } from "@/stores/route-editor-store";
@@ -46,6 +47,7 @@ export function RouteStopsTab({ detail, onChanged }: RouteStopsTabProps) {
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftName, setDraftName] = useState("");
+  const [draftNameAm, setDraftNameAm] = useState("");
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [newLat, setNewLat] = useState("");
@@ -114,20 +116,36 @@ export function RouteStopsTab({ detail, onChanged }: RouteStopsTabProps) {
 
   const submitRename = (stop: RouteStopRow) => {
     const name = draftName.trim();
-    if (name === "" || name === stop.name) {
+    const nameAm = draftNameAm.trim();
+    const nameChanged = name !== "" && name !== stop.name;
+    const nameAmChanged = nameAm !== (stop.nameAm ?? "");
+    if (!nameChanged && !nameAmChanged) {
       setEditingId(null);
       return;
     }
     setFeedback(null);
     startTransition(async () => {
-      const result = await renameStop({ stopId: stop.id, name });
-      if (result.ok) {
-        setFeedback({ kind: "ok", message: `Renamed to “${name}”` });
-        setEditingId(null);
-        refresh();
-      } else {
-        setFeedback({ kind: "error", message: result.error });
+      const [nameResult, nameAmResult] = await Promise.all([
+        nameChanged ? renameStop({ stopId: stop.id, name }) : null,
+        nameAmChanged
+          ? setStopNameAm({ stopId: stop.id, nameAm: nameAm === "" ? null : nameAm })
+          : null,
+      ]);
+      const error = nameResult?.ok === false
+        ? nameResult.error
+        : nameAmResult?.ok === false
+          ? nameAmResult.error
+          : null;
+      if (error) {
+        setFeedback({ kind: "error", message: error });
+        return;
       }
+      setFeedback({
+        kind: "ok",
+        message: nameChanged ? `Renamed to “${name}”` : "Amharic name saved",
+      });
+      setEditingId(null);
+      refresh();
     });
   };
 
@@ -281,11 +299,14 @@ export function RouteStopsTab({ detail, onChanged }: RouteStopsTabProps) {
                 position={i + 1}
                 editing={editingId === stop.id}
                 draftName={draftName}
+                draftNameAm={draftNameAm}
                 disabled={isPending}
                 onDraftChange={setDraftName}
+                onDraftAmChange={setDraftNameAm}
                 onStartEdit={() => {
                   setEditingId(stop.id);
                   setDraftName(stop.name);
+                  setDraftNameAm(stop.nameAm ?? "");
                 }}
                 onCommitEdit={() => submitRename(stop)}
                 onCancelEdit={() => setEditingId(null)}

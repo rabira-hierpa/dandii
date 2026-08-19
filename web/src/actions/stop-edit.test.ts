@@ -27,9 +27,8 @@ vi.mock("@/lib/session", () => ({
 }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 
-const { createStop, deleteStop, renameStop, reorderRouteStops } = await import(
-  "./stop-edit"
-);
+const { createStop, deleteStop, renameStop, reorderRouteStops, setStopNameAm } =
+  await import("./stop-edit");
 
 const MEGENAGNA = { lat: 9.0194, lon: 38.8005 };
 
@@ -115,6 +114,58 @@ describe("renameStop", () => {
 
     expect(result.ok).toBe(false);
     expect(prisma.stopOverride.upsert).not.toHaveBeenCalled();
+  });
+});
+
+describe("setStopNameAm", () => {
+  it("writes an override for a FEED stop and mirrors nameAm", async () => {
+    const result = await setStopNameAm({ stopId: "node/1", nameAm: "መገናኛ" });
+
+    expect(result.ok).toBe(true);
+    expect(prisma.stopOverride.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ nameAm: "መገናኛ" }),
+      }),
+    );
+    expect(prisma.stop.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { nameAm: "መገናኛ" } }),
+    );
+  });
+
+  it("edits an OPERATOR stop in place, no override row", async () => {
+    prisma.stop.findUnique.mockResolvedValue({
+      id: "op:1",
+      name: "Mine",
+      origin: "OPERATOR",
+    });
+
+    const result = await setStopNameAm({ stopId: "op:1", nameAm: "የኔ" });
+
+    expect(result.ok).toBe(true);
+    expect(prisma.stop.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { nameAm: "የኔ" } }),
+    );
+    expect(prisma.stopOverride.upsert).not.toHaveBeenCalled();
+  });
+
+  it("clears nameAm with null, falling back to the English name", async () => {
+    const result = await setStopNameAm({ stopId: "node/1", nameAm: null });
+
+    expect(result.ok).toBe(true);
+    expect(prisma.stopOverride.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({ nameAm: null }),
+      }),
+    );
+  });
+
+  it("refuses an unknown stop", async () => {
+    prisma.stop.findUnique.mockResolvedValue(null);
+
+    const result = await setStopNameAm({ stopId: "nope", nameAm: "X" });
+
+    expect(result.ok).toBe(false);
+    expect(result.ok === false && result.error).toBe("Stop not found");
   });
 });
 

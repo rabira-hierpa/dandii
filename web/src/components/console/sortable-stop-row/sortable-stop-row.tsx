@@ -10,8 +10,10 @@ interface SortableStopRowProps {
   readonly position: number;
   readonly editing: boolean;
   readonly draftName: string;
+  readonly draftNameAm: string;
   readonly disabled: boolean;
   readonly onDraftChange: (name: string) => void;
+  readonly onDraftAmChange: (nameAm: string) => void;
   readonly onStartEdit: () => void;
   readonly onCommitEdit: () => void;
   readonly onCancelEdit: () => void;
@@ -27,8 +29,10 @@ export function SortableStopRow({
   position,
   editing,
   draftName,
+  draftNameAm,
   disabled,
   onDraftChange,
+  onDraftAmChange,
   onStartEdit,
   onCommitEdit,
   onCancelEdit,
@@ -73,34 +77,70 @@ export function SortableStopRow({
       </span>
 
       {editing ? (
-        <input
-          value={draftName}
-          autoFocus
-          onChange={(e) => onDraftChange(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") onCommitEdit();
-            if (e.key === "Escape") onCancelEdit();
-          }}
-          onBlur={onCommitEdit}
-          className={cx(inputClass, "min-w-0 flex-1")}
-        />
+        <>
+          <div className="flex min-w-0 flex-1 flex-col gap-1">
+            <input
+              value={draftName}
+              autoFocus
+              placeholder="Stop name"
+              onChange={(e) => onDraftChange(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") onCommitEdit();
+                if (e.key === "Escape") onCancelEdit();
+              }}
+              className={inputClass}
+            />
+            <input
+              value={draftNameAm}
+              placeholder="Amharic name (optional)"
+              lang="am"
+              onChange={(e) => onDraftAmChange(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") onCommitEdit();
+                if (e.key === "Escape") onCancelEdit();
+              }}
+              className={inputClass}
+            />
+          </div>
+          <button
+            type="button"
+            onClick={onCommitEdit}
+            className="shrink-0 cursor-pointer text-[11.5px] font-semibold text-[#15803D] hover:text-[#166534]"
+          >
+            Save
+          </button>
+          <button
+            type="button"
+            onClick={onCancelEdit}
+            className="shrink-0 cursor-pointer text-[11.5px] font-semibold text-[#5C6B5E] hover:text-[#1C2321]"
+          >
+            Cancel
+          </button>
+        </>
       ) : (
         <>
           <button
             type="button"
             onClick={onFocusOnMap}
             title="Show this stop on the map"
-            className="min-w-0 flex-1 cursor-pointer truncate text-left text-[12.5px] text-[#1C2321] hover:text-[#B45309] hover:underline"
+            className="flex min-w-0 flex-1 flex-col items-start truncate text-left"
           >
-            {stop.name}
-            {stop.edited && (
-              <span className="ml-1.5 text-[10.5px] font-medium text-[#B45309]">
-                edited
-              </span>
-            )}
-            {stop.operatorCreated && (
-              <span className="ml-1.5 text-[10.5px] font-medium text-[#1E40AF]">
-                new
+            <span className="truncate text-[12.5px] text-[#1C2321] hover:text-[#B45309] hover:underline">
+              {stop.name}
+              {stop.edited && (
+                <span className="ml-1.5 text-[10.5px] font-medium text-[#B45309]">
+                  edited
+                </span>
+              )}
+              {stop.operatorCreated && (
+                <span className="ml-1.5 text-[10.5px] font-medium text-[#1E40AF]">
+                  new
+                </span>
+              )}
+            </span>
+            {stop.nameAm && (
+              <span lang="am" className="truncate text-[11px] text-[#7E9182]">
+                {stop.nameAm}
               </span>
             )}
           </button>

@@ -5,6 +5,8 @@ import {
   describeClosure,
   isPairBlocked,
   isPairClosed,
+  resolveClosedWindow,
+  type TripStop,
   type ClosureRange,
 } from "./closures";
 
@@ -290,5 +292,118 @@ describe("itineraryTouchesSkippedStops", () => {
         skipped,
       ),
     ).toBe(false);
+  });
+});
+
+/**
+ * Cross-direction resolution.
+ *
+ * A closure is stored as two stop ids. 406 of the 444 two-direction routes in
+ * the feed share NO stop ids between their directions (verified against the dev
+ * database 2026-08-18) — the outbound and return sides of a road are separate
+ * stops with separate ids. So an operator who closes a stretch by picking
+ * outbound stops leaves the return direction planning as if the road were open,
+ * which is the failure these cover.
+ */
+const OUTBOUND: TripStop[] = [
+  { id: "out-1", sequence: 1, lat: 9.0107, lon: 38.7613 },
+  { id: "out-2", sequence: 2, lat: 9.0150, lon: 38.7650 },
+  { id: "out-3", sequence: 3, lat: 9.0184, lon: 38.7681 },
+  { id: "out-4", sequence: 4, lat: 9.0250, lon: 38.7750 },
+];
+
+/** The same road the other way: different ids, ~20 m across the carriageway. */
+const RETURN: TripStop[] = [
+  { id: "ret-1", sequence: 1, lat: 9.02505, lon: 38.77515 },
+  { id: "ret-2", sequence: 2, lat: 9.01845, lon: 38.76825 },
+  { id: "ret-3", sequence: 3, lat: 9.01505, lon: 38.76515 },
+  { id: "ret-4", sequence: 4, lat: 9.01075, lon: 38.76145 },
+  // One more call past the far end, so "a journey clear of the closure" is an
+  // actual journey and not a single stop.
+  { id: "ret-5", sequence: 5, lat: 9.0050, lon: 38.7570 },
+];
+
+const severed: ClosureRange = {
+  kind: "SEVERED",
+  fromStopId: "out-2",
+  toStopId: "out-3",
+};
+
+/** Where the boundary stops actually are, for trips that don't serve them. */
+const ANCHORS = new Map(
+  OUTBOUND.map((s) => [s.id, { lat: s.lat, lon: s.lon }]),
+);
+
+describe("resolveClosedWindow", () => {
+  it("uses exact stop ids when the trip actually serves them", () => {
+    const w = resolveClosedWindow(severed, OUTBOUND, 150);
+
+    expect(w).toEqual({ start: 2, end: 3 });
+  });
+
+  it("resolves onto the return direction by position", () => {
+    // out-2/out-3 are not in RETURN at all. Their opposite numbers are ret-3
+    // and ret-2, so the closed window is sequences 2..3 the other way round.
+    const w = resolveClosedWindow(severed, RETURN, 150, ANCHORS);
+
+    expect(w).toEqual({ start: 2, end: 3 });
+  });
+
+  it("blocks a return-direction journey across the closed stretch", () => {
+    // The bug: this returned false, and a rider was routed straight through a
+    // road the operator had closed.
+    const w = resolveClosedWindow(severed, RETURN, 150, ANCHORS);
+
+    expect(isPairBlocked(severed, w, 1, 4)).toBe(true);
+  });
+
+  it("still allows a return journey that stays clear of the closure", () => {
+    const w = resolveClosedWindow(severed, RETURN, 150, ANCHORS);
+
+    // Both ends past the closed window (which lands on sequences 2-3 here).
+    expect(isPairBlocked(severed, w, 4, 5)).toBe(false);
+  });
+
+  it("refuses to snap a stop that is genuinely far away", () => {
+    // A different route that happens to be active. Snapping here would close
+    // roads nobody closed.
+    const elsewhere: TripStop[] = [
+      { id: "far-1", sequence: 1, lat: 9.0600, lon: 38.8300 },
+      { id: "far-2", sequence: 2, lat: 9.0650, lon: 38.8350 },
+    ];
+
+    expect(resolveClosedWindow(severed, elsewhere, 150, ANCHORS)).toBeNull();
+  });
+
+  it("returns null when the closure has no range", () => {
+    const whole: ClosureRange = {
+      kind: "WHOLE_ROUTE",
+      fromStopId: null,
+      toStopId: null,
+    };
+
+    expect(resolveClosedWindow(whole, OUTBOUND, 150)).toBeNull();
+  });
+
+  it("orders the window even when the directions run opposite ways", () => {
+    // from/to are outbound order; on the return they resolve reversed. The
+    // window must still come back low-to-high or every comparison inverts.
+    const w = resolveClosedWindow(severed, RETURN, 150, ANCHORS)!;
+
+    expect(w.start).toBeLessThanOrEqual(w.end);
+  });
+
+  it("resolves a mixed trip where only one endpoint matches by id", () => {
+    // Interchanges sometimes share one stop between directions but not both.
+    const mixed: TripStop[] = [
+      { id: "out-2", sequence: 1, lat: 9.0150, lon: 38.7650 },
+      { id: "ret-2", sequence: 2, lat: 9.01845, lon: 38.76825 },
+      { id: "ret-1", sequence: 3, lat: 9.02505, lon: 38.77515 },
+    ];
+
+    expect(resolveClosedWindow(severed, mixed, 150, ANCHORS)).toEqual({
+      start: 1,
+      end: 2,
+    });
   });
 });

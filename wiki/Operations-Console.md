@@ -70,6 +70,16 @@ Requires `feed:generate`. Full detail in [GTFS Export and Feed Versions](GTFS-Ex
 
 Requires `system:settings` + user-management permission (admin and above).
 
+## How to invite someone new
+
+1. Go to **Settings → Invitations** (`/settings/invitations`).
+2. Enter the invitee's email and pick a role — only roles within your assignment power appear (same `ASSIGNABLE_ROLES` as Members).
+3. **Send invite.** If no email provider is configured (`RESEND_API_KEY`), the console shows the invite link directly for you to share by hand instead of emailing it.
+4. The invitee opens the link and signs in with Google using that **same email address**. Acceptance is automatic and immediate: the role is granted the moment the signed-in email matches the invitation, whether they're a brand-new signup or an existing account being upgraded.
+5. A pending invite can be **revoked** any time before it's accepted; it also expires on its own after 7 days.
+
+Requires `invitation:create` / `invitation:revoke` (super-admin and admin only). There's no separate email/password signup — acceptance rides the existing Google sign-in flow.
+
 ## Related
 
 - [Roles and Permissions](Roles-and-Permissions) · [Crowdsourced Fares](Crowdsourced-Fares) · [GTFS Export and Feed Versions](GTFS-Export-and-Feed-Versions)

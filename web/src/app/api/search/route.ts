@@ -8,6 +8,7 @@ const OPERATOR_SET = new Set<string>(OPERATOR_CODES);
 interface StopResult {
   id: string;
   name: string;
+  nameAm?: string | null;
   lat: number;
   lon: number;
   /** How many distinct feed stops share this name (fragmented places). */
@@ -37,7 +38,7 @@ export async function GET(request: NextRequest) {
     ? Promise.resolve([])
     : prisma.stop.findMany({
         where: { name: { contains: q, mode: "insensitive" } },
-        select: { id: true, name: true, lat: true, lon: true },
+        select: { id: true, name: true, nameAm: true, lat: true, lon: true },
         take: 80,
         orderBy: { name: "asc" },
       });

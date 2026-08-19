@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   DndContext,
@@ -26,6 +26,7 @@ import {
 } from "@/actions/stop-edit";
 import { SortableStopRow } from "@/components/console/sortable-stop-row";
 import { useRouteEditorStore } from "@/stores/route-editor-store";
+import { useStopPlacementStore } from "@/stores/stop-placement-store";
 import type { RouteEditorDetail, RouteStopRow } from "@/types/console";
 import { cx } from "@/utils/cx";
 
@@ -52,6 +53,32 @@ export function RouteStopsTab({ detail, onChanged }: RouteStopsTabProps) {
   const [newName, setNewName] = useState("");
   const [newLat, setNewLat] = useState("");
   const [newLon, setNewLon] = useState("");
+  const placing = useStopPlacementStore((st) => st.placing);
+  const picked = useStopPlacementStore((st) => st.picked);
+  const outOfBounds = useStopPlacementStore((st) => st.outOfBounds);
+  const startPlacing = useStopPlacementStore((st) => st.startPlacing);
+  const cancelPlacing = useStopPlacementStore((st) => st.cancelPlacing);
+  const resetPlacement = useStopPlacementStore((st) => st.reset);
+
+  // A picked point drives the two coordinate fields. They stay editable —
+  // clicking is a faster way to fill them in, not a replacement for typing a
+  // coordinate somebody read off a survey.
+  useEffect(() => {
+    if (!picked) return;
+    setNewLat(picked.lat.toFixed(6));
+    setNewLon(picked.lon.toFixed(6));
+  }, [picked]);
+
+  // Escape is the expected way out of a map mode, and without it the only exit
+  // is a button the map may be covering on a narrow screen.
+  useEffect(() => {
+    if (!placing) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") cancelPlacing();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [placing, cancelPlacing]);
 
   const direction = detail.directions.find(
     (d) => d.directionId === directionId,
@@ -187,6 +214,7 @@ export function RouteStopsTab({ detail, onChanged }: RouteStopsTabProps) {
             : `${newName.trim()} created, but this direction has no trips to add it to`,
         });
         setCreating(false);
+        resetPlacement();
         setNewName("");
         setNewLat("");
         setNewLon("");
@@ -225,6 +253,32 @@ export function RouteStopsTab({ detail, onChanged }: RouteStopsTabProps) {
             placeholder="Stop name"
             className={inputClass}
           />
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={placing ? cancelPlacing : startPlacing}
+              aria-pressed={placing}
+              className={cx(
+                "cursor-pointer rounded-lg border px-2.5 py-1.5 text-[12px] font-semibold",
+                placing
+                  ? "border-[#D97706] bg-[#FFFBEB] text-[#B45309]"
+                  : "border-[#D6DCD0] bg-white text-[#3D4A3F] hover:bg-[#F4F6F2]",
+              )}
+            >
+              {placing ? "Click the map… (Esc to cancel)" : "Pick on map"}
+            </button>
+            {picked && !placing && (
+              <span className="text-[11px] text-[#15803D]">
+                Position set from the map
+              </span>
+            )}
+          </div>
+          {outOfBounds && (
+            <p className="text-[11px] text-[#B45309]">
+              That point is outside Addis Ababa. Click inside the city, or type
+              the coordinates below.
+            </p>
+          )}
           <div className="grid grid-cols-2 gap-2">
             <input
               value={newLat}
@@ -256,7 +310,10 @@ export function RouteStopsTab({ detail, onChanged }: RouteStopsTabProps) {
             </button>
             <button
               type="button"
-              onClick={() => setCreating(false)}
+              onClick={() => {
+                setCreating(false);
+                resetPlacement();
+              }}
               className="cursor-pointer text-[12.5px] font-medium text-[#5C6B5E] hover:underline"
             >
               Cancel

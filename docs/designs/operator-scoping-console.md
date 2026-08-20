@@ -107,6 +107,15 @@ authorizes the page also hands over the filter. A coverage test walks
 `app/console` and `app/api/console` and fails when a surface skips it.
 Effort L (human ~4d / CC ~60m), risk low.
 
+### Approach D: Postgres Row-Level Security
+Rejected. RLS enforces in the database and cannot be forgotten at a call site,
+which is the strongest form of what Approach B achieves with a test. But Prisma
+drives RLS through a per-connection session variable that must be set inside
+every transaction; with a pooled connection, a request that misses it silently
+reads the previous request's scope, which is a worse failure than the one being
+fixed. The same database also serves the public rider map. Same trap as
+Approach C, one layer lower.
+
 ### Approach C: Prisma client extension, automatic row-level filtering
 Rejected. The same Prisma singleton serves the public rider map, so an
 automatic operator filter would either break the public map or need an escape
@@ -125,16 +134,31 @@ Implementation shape:
    `User.operatorCode` from the database (not the session cookie, matching the
    existing write-side rule so revoking a scope takes effect immediately), and
    returns the role plus a ready `routeWhere` fragment.
-2. **All 11 read surfaces** adopt it: the 7 console pages, `console/layout.tsx`,
+
+   Wrap both `getSession` and `getUserOperatorCode` in React's `cache()`.
+   `console/layout.tsx:14` and every page call `requireRole` independently, so
+   the console already performs two session lookups per navigation; adding an
+   unmemoized DB read would make it two of those too. `cache()` is the
+   framework's request-level memo and dedupes them to one per render pass.
+2. **Reads refuse with 404, not 403.** An out-of-scope route must be
+   indistinguishable from one that does not exist, or an Anbessa user can
+   enumerate ids and learn which routes exist and who owns them.
+   `api/console/routes/[routeId]/route.ts:43` already returns
+   `{ error: "Route not found" }, { status: 404 }` for a missing route; the
+   scope refusal returns exactly that. Writes keep `denyOutOfScope`'s
+   named-owner message ("route X belongs to LRT, not ANBESSA") — a dispatcher
+   editing a line they legitimately know about needs to know whom to ask.
+
+3. **All 11 read surfaces** adopt it: the 7 console pages, `console/layout.tsx`,
    and the 3 console APIs. `/console/routes` additionally must ignore a
    `?operator=` param that contradicts the viewer's scope rather than trusting it.
-3. **Console map** — `/api/geo/routes` currently has no auth because the public
+4. **Console map** — `/api/geo/routes` currently has no auth because the public
    rider map uses it. Split a `/api/console/geo/routes` that requires a console
    session and applies `routeWhere`; leave the public endpoint untouched.
    Chosen over adding a `scope` param to the shared endpoint because one
    endpoint whose auth depends on who is asking is the ambient-identity trap
    that makes Approach C unsafe. Two endpoints, two obvious contracts.
-4. **The remaining write families** get `denyOutOfScope` at the same point in
+5. **The remaining write families** get `denyOutOfScope` at the same point in
    each action that `feedEdit` already does: `fares.ts`, `closures.ts`,
    `fare-proposals.ts`, plus removing `feed: ["generate"]` from
    `routeOperatorRole`. Route assignment is already handled and needs no new
@@ -142,22 +166,47 @@ Implementation shape:
    cross-operator reassignment, and `resolveCreateOperator` forces a scoped
    user's own operator onto anything they create. Worth a regression test in
    this pass rather than new enforcement.
-5. **Nav** — `sidebar.tsx` drops Analytics and Feed Versions for scoped roles,
+6. **Nav** — `sidebar.tsx` drops Analytics and Feed Versions for scoped roles,
    and both routes refuse directly so the nav is not the only gate.
-6. **Coverage test** — enumerates the console surface files and asserts each
+7. **Coverage test** — enumerates the console surface files and asserts each
    imports the scope helper. New page, no helper, red build. Honest limit: an
    import check proves the helper is reachable, not that its `where` was
    actually spread into every query. It catches the whole-file omission that
    caused this bug; it does not catch a half-applied filter, so the per-surface
    assertions in Success Criteria still carry that weight.
 
-7. **Backfill before deploy.** `getUserOperatorCode` already fails closed: a
+8. **Backfill is a release gate, not a step.** `getUserOperatorCode` already fails closed: a
    `route-operator` with a null `operatorCode` is refused rather than treated
    as network-wide. That is correct for writes and would lock every *existing*
    route-operator out of the console the moment reads adopt the same helper.
    Any `route-operator` row predating `21ee87c` needs an operator assigned, or
    demoting to `user`, as a migration step — not as a support ticket after
    deploy.
+
+## Landing sequence
+
+Two PRs, writes first. They split on a real dependency: the write fixes need
+only `denyOutOfScope`, which already exists, while the read fixes need
+`requireConsoleScope` built first.
+
+**PR-1 (~6 files) — close what reaches riders.** `fares.ts`, `closures.ts`,
+`fare-proposals.ts`, drop `feed: ["generate"]` from `routeOperatorRole`, plus
+tests. No new infrastructure. Ships independently.
+
+**PR-2 (~13 files) — close what they can see.** `requireConsoleScope` with
+`cache()`, the 11 read surfaces, `/api/console/geo/routes`, nav changes, the
+coverage test, and the backfill gate.
+
+Security lands first and gets reviewed on its own merits instead of buried in a
+19-file authorization diff.
+
+## Non-goals
+
+- **The exported feed stays network-wide.** `gtfs-export.ts` collects every
+  operator's routes by construction, and the published GTFS is public data.
+  Console isolation does not make the artifact isolated, and it is not meant
+  to. Recorded because "they only see their agency" and "the feed contains
+  every agency" read as contradictory otherwise.
 
 ## Open Questions
 
@@ -236,3 +285,99 @@ Do the walk before the fix, so you have a before to compare against.
 - You said "throughout the console" — not "on the routes page." That phrasing
   is why this doc covers eleven surfaces and a coverage test rather than
   patching the page where you noticed it.
+
+## Implementation Tasks
+Synthesized from the /plan-eng-review findings. Each derives from a specific
+finding. PR-1 is T1 + T2; PR-2 is the rest.
+
+- [ ] **T1 (P1, human: ~1 day / CC: ~20min)** — write-scoping — Scope fares, closures and proposal review to the viewer's operator
+  - Surfaced by: Step 0 — 5 of 6 permission families unscoped; a route-operator can delete a Sheger fare
+  - Files: `actions/fares.ts`, `actions/closures.ts`, `actions/fare-proposals.ts`, `lib/permissions.ts`
+  - Verify: cross-operator refusal tests, mirroring `route-edit.test.ts`'s "operator scope" block
+- [ ] **T2 (P1, human: ~2h / CC: ~15min)** — release-gate — Backfill operatorCode and assert zero nulls before the read-side deploy
+  - Surfaced by: Issue 1 — the fail-closed backstop locks out pre-`21ee87c` route-operators
+  - Files: `scripts/backfill-operator-codes.ts`, `.github/workflows/ci.yml`
+  - Verify: CI fails when a `route-operator` row has a null `operatorCode`
+- [ ] **T3 (P1, human: ~4h / CC: ~20min)** — session — Add `requireConsoleScope`, memoized with React `cache()`
+  - Surfaced by: Issue 2 — `console/layout.tsx:14` and every page authorize independently
+  - Files: `lib/session.ts`
+  - Verify: one session lookup and one operator read per render pass
+- [ ] **T4 (P1, human: ~2 days / CC: ~30min)** — read-surfaces — Adopt `requireConsoleScope` across all 11 console read surfaces
+  - Surfaced by: Step 0 — 0 of 11 surfaces filter by operator
+  - Files: `app/console/**`, `app/api/console/**`
+  - Verify: `?operator=LRT` on `/console/routes` returns Anbessa routes
+- [ ] **T5 (P2, human: ~2h / CC: ~10min)** — api — Return 404, not 403, for an out-of-scope route read
+  - Surfaced by: Issue 3 — 403 leaks route existence and ownership under full isolation
+  - Files: `app/api/console/routes/[routeId]/route.ts`
+  - Verify: foreign id and missing id produce byte-identical responses
+- [ ] **T6 (P2, human: ~4h / CC: ~15min)** — console-map — Split `/api/console/geo/routes`
+  - Surfaced by: Architecture — `/api/geo/routes` has no auth because it serves the rider map
+  - Files: `app/api/console/geo/routes/route.ts`
+  - Verify: public endpoint still returns all 447 routes anonymously
+- [ ] **T7 (P2, human: ~1h / CC: ~10min)** — nav — Hide Analytics and Feed Versions from scoped roles and refuse the routes
+  - Surfaced by: D4 — a network-wide page filtered to one operator is a different product
+  - Files: `components/console/sidebar.tsx`
+  - Verify: direct navigation refuses, not just a hidden nav item
+- [ ] **T8 (P1, human: ~1 day / CC: ~25min)** — tests — Close the 24 coverage gaps including the scope-coverage guard
+  - Surfaced by: Test review — 4/28 paths covered; nothing the plan adds is tested
+  - Files: `lib/console-scope-coverage.test.ts` and per-surface tests
+  - Verify: the guard test fails when a console page is added without the helper
+
+## Failure modes
+
+| Codepath | Realistic production failure | Test? | Error handling? | User sees |
+|---|---|---|---|---|
+| `requireConsoleScope` | route-operator with null code after a demotion | yes (`operator-scope.test.ts:82`) | yes, fails closed | clear refusal |
+| Backfill ordering | deployed before backfill runs | T2 (CI gate) | gate blocks deploy | nothing — never ships |
+| `routeWhere` on a page | filter omitted on a newly added page | T8 (guard test) | none at runtime | **silent leak** |
+| Out-of-scope route read | 403 instead of 404 | T5 | n/a | id enumeration |
+| `/api/console/geo/routes` | console map falls back to the public endpoint | T6 | none | **silent leak** |
+
+Two rows are silent failures with no runtime error handling: a forgotten
+`routeWhere` and a console map falling back to the public endpoint. Both are
+caught only by tests, which is why T8 is P1 rather than a follow-up. Neither
+is a **critical gap** as defined (no test AND no handling AND silent) — both
+have tests in this plan.
+
+## Worktree parallelization strategy
+
+| Step | Modules touched | Depends on |
+|---|---|---|
+| T1 write-scoping | `actions/`, `lib/permissions.ts` | — |
+| T2 release gate | `scripts/`, `.github/` | — |
+| T3 requireConsoleScope | `lib/session.ts` | — |
+| T4 read surfaces | `app/console/`, `app/api/console/` | T3 |
+| T5 404 refusal | `app/api/console/` | T3 |
+| T6 console geo | `app/api/console/` | T3 |
+| T7 nav | `components/console/` | — |
+| T8 tests | test files across all | T1, T4 |
+
+```
+Lane A: T1 → (PR-1)                 independent, ships first
+Lane B: T2                          independent, ops/CI only
+Lane C: T3 → T4 → T5 → T6           sequential, all share app/api/console
+Lane D: T7                          independent, components/ only
+```
+
+Launch A, B, D in parallel worktrees; C waits on nothing but is internally
+sequential. T8 merges last. **Conflict flag:** T4, T5 and T6 all touch
+`app/api/console/` — keep them in one lane rather than parallel worktrees.
+
+## GSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 1 | CLEAR (via /autoplan) | 0 proposals, prior branch scope |
+| Codex Review | `/codex review` | Independent 2nd opinion | 0 | — | — |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | CLEAR (PLAN) | 3 issues, 0 critical gaps |
+| Design Review | `/plan-design-review` | UI/UX gaps | 1 | CLEAR (via /autoplan) | prior branch scope |
+| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | — |
+
+**CROSS-MODEL:** Codex not installed; the outside voice ran as an inline
+independent pass. It raised one finding the four sections missed — the exported
+GTFS feed stays network-wide by construction, which is correct but reads as
+contradictory next to full console isolation. Folded into Non-goals.
+
+**VERDICT:** ENG CLEARED — ready to implement. Land as two PRs, writes first.
+
+NO UNRESOLVED DECISIONS

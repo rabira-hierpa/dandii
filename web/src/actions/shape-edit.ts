@@ -114,6 +114,7 @@ export async function saveRouteShape(input: ShapeSaveInput) {
 
   revalidatePath("/console/network");
   revalidatePath("/api/geo/routes");
+  revalidatePath("/api/console/geo/routes");
   return {
     ok: true as const,
     data: { unsnappedCount: snapped.unsnappedCount },
@@ -193,6 +194,7 @@ export async function resetRouteShape(input: ShapeResetInput) {
 
   revalidatePath("/console/network");
   revalidatePath("/api/geo/routes");
+  revalidatePath("/api/console/geo/routes");
   return { ok: true as const, data: { restored: shapeIds.length } };
 }
 

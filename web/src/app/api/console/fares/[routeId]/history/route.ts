@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requirePermission } from "@/lib/session";
+import { requirePermissionScope } from "@/lib/session";
 import type { FareHistoryEntry, FareSnapshot } from "@/types/fares";
 
 /** How many entries a route's history shows. Older ones stay in the table. */
@@ -33,8 +33,18 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ routeId: string }> },
 ) {
-  await requirePermission({ fare: ["read"] });
+  const { routeWhere } = await requirePermissionScope({ fare: ["read"] });
   const { routeId } = await params;
+
+  // Same 404-shaped refusal as the route detail: an empty history and a
+  // history you may not see must look identical from outside.
+  const visible = await prisma.route.findFirst({
+    where: { id: routeId, ...routeWhere },
+    select: { id: true },
+  });
+  if (!visible) {
+    return Response.json({ error: "Route not found" }, { status: 404 });
+  }
 
   const rows = await prisma.fareChangeLog.findMany({
     where: { routeId },

@@ -22,18 +22,32 @@ const NAV_ITEMS = [
   { href: "/console/analytics", key: "analytics", dot: "#9333EA" },
 ] as const;
 
+/**
+ * Pages that answer a question about the whole network. A single-operator
+ * version of "average fare by operator" is a different page, not a narrower
+ * one, so a scoped role does not get them. The routes refuse directly too —
+ * hiding a nav item is presentation, not authorization.
+ */
+const NETWORK_WIDE_KEYS: readonly string[] = ["analytics", "feeds"];
+
 interface ConsoleSidebarProps {
   user: { name: string; email: string; role: string };
   canManageSettings: boolean;
   pendingProposals: number;
+  /** True when the viewer is limited to one operator. */
+  scoped: boolean;
 }
 
 export function ConsoleSidebar({
   user,
   canManageSettings,
   pendingProposals,
+  scoped,
 }: ConsoleSidebarProps) {
   const t = useTranslations("console");
+  const items = scoped
+    ? NAV_ITEMS.filter((item) => !NETWORK_WIDE_KEYS.includes(item.key))
+    : NAV_ITEMS;
   const pathname = usePathname();
   const router = useRouter();
 
@@ -55,7 +69,7 @@ export function ConsoleSidebar({
       </div>
 
       <nav className="mt-5 flex flex-col gap-1.5">
-        {NAV_ITEMS.map((item) => {
+        {items.map((item) => {
           const active =
             item.href === "/console"
               ? pathname === "/console"

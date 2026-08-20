@@ -3,7 +3,7 @@ import { ConsolePageHeader } from "@/components/console/page-header";
 import type { OperatorCode } from "@/lib/operators";
 import { CONSOLE_ROLES } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
-import { requireRole } from "@/lib/session";
+import { requireConsoleScope } from "@/lib/session";
 import { ReviewQueue, type RouteGroup } from "./review-queue";
 
 export const dynamic = "force-dynamic";
@@ -35,10 +35,12 @@ function fareKey(fare: FareShape): string {
 
 export default async function ProposalsReviewPage() {
   const t = await getTranslations("console");
-  await requireRole(CONSOLE_ROLES);
+  const { routeWhere, scoped } = await requireConsoleScope(CONSOLE_ROLES);
 
   const proposals = await prisma.fareProposal.findMany({
-    where: { status: "PENDING" },
+    // A scoped reviewer sees only proposals on routes they operate, which
+    // also makes the queue their actual workload rather than the network's.
+    where: { status: "PENDING", ...(scoped ? { route: routeWhere } : {}) },
     orderBy: { createdAt: "asc" },
     select: {
       id: true,

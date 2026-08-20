@@ -17,7 +17,9 @@ import {
   splitShapeByClosureWindow,
   type ClosureRange,
 } from "@/lib/closures";
+import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
+import { getActiveClosures } from "@/lib/transit";
 
 interface ActiveClosure {
   routeId: string;
@@ -255,4 +257,72 @@ export async function loadClosureAnchors(
     }
   }
   return out;
+}
+
+/**
+ * The `?directions=both` feature collection — every direction as its own
+ * feature, which is what both console maps render.
+ *
+ * Shared rather than copied because the console needs the identical geometry
+ * pipeline with one difference: a `where` that limits it to the viewer's
+ * operator. The public rider endpoint passes `{}` and is unaffected.
+ */
+export async function loadDirectionalFeatureCollection(
+  routeWhere: Prisma.RouteWhereInput,
+): Promise<{ features: GeoJSON.Feature[]; anyClosed: boolean }> {
+  const [routes, active, colorOverrides] = await Promise.all([
+    prisma.route.findMany({
+      where: routeWhere,
+      select: {
+        id: true,
+        shortName: true,
+        longName: true,
+        type: true,
+        lengthMeters: true,
+        assignment: { select: { operator: { select: { code: true } } } },
+      },
+    }),
+    getActiveClosures(),
+    prisma.routeOverride.findMany({
+      where: { color: { not: null }, deletedAt: null },
+      select: { routeId: true, color: true },
+    }),
+  ]);
+
+  const colorByRoute = new Map(
+    colorOverrides.map((o) => [o.routeId, o.color as string]),
+  );
+  const byRoute = new Map<string, typeof active>();
+  for (const c of active) {
+    const list = byRoute.get(c.routeId) ?? [];
+    list.push(c);
+    byRoute.set(c.routeId, list);
+  }
+
+  const [shapes, anchors] = await Promise.all([
+    loadDirectionalShapes(),
+    loadClosureAnchors(active),
+  ]);
+
+  // Shapes are loaded whole; drop the ones whose route the viewer cannot see.
+  const visible = new Set(routes.map((r) => r.id));
+  const scopedShapes = shapes.filter((s) => visible.has(s.routeId));
+
+  return {
+    features: buildDirectionalFeatures(
+      scopedShapes,
+      routes.map((r) => ({
+        id: r.id,
+        shortName: r.shortName,
+        longName: r.longName,
+        type: r.type,
+        lengthMeters: r.lengthMeters,
+        operatorCode: r.assignment?.operator.code ?? null,
+        colorOverride: colorByRoute.get(r.id) ?? null,
+      })),
+      byRoute,
+      anchors,
+    ),
+    anyClosed: active.length > 0,
+  };
 }

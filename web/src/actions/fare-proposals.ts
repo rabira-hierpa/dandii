@@ -5,6 +5,7 @@ import { Prisma } from "@/generated/prisma/client";
 import { applyFareChange, type FareData } from "@/lib/fare-write";
 import { awardPoints, deriveBadges, POINTS } from "@/lib/points";
 import { prisma } from "@/lib/prisma";
+import { denyOutOfScope } from "@/lib/operator-scope";
 import { getSession, requirePermission } from "@/lib/session";
 import {
   RATE_LIMIT_PER_DAY,
@@ -159,6 +160,13 @@ export async function reviewProposal(
   if (proposal.status !== "PENDING") {
     return { ok: false, error: "This proposal was already decided" };
   }
+
+  // Approving writes a Fare on the proposal's route and credits the submitter,
+  // so it is a write to that route and scoped like one.
+  const denied = await denyOutOfScope(session.user.id, {
+    routeId: proposal.routeId,
+  });
+  if (denied) return denied;
 
   const superseded = await prisma.$transaction(async (tx) => {
     // Serialize approvals per route so two concurrent PENDING proposals cannot

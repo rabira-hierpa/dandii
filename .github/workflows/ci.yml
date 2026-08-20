@@ -72,6 +72,14 @@ jobs:
         run: printf 'DATABASE_URL=%s\nBETTER_AUTH_SECRET=%s\n' "$DATABASE_URL" "$BETTER_AUTH_SECRET" > .env
       - name: Seed the database
         run: npm run db:seed
+      # Smoke check only: CI seeds a fresh database, so there are never legacy
+      # route-operator rows here and this always passes on data grounds. It
+      # earns its place by breaking on schema drift — the query names
+      # User.role and User.operatorCode, so renaming either fails the build.
+      # The REAL gate is running this against production before the read-side
+      # deploy; see docs/designs/operator-scoping-console.md.
+      - name: Operator-scope backfill gate (schema smoke)
+        run: npx tsx scripts/backfill-operator-codes.ts
       # Runs the CRITICAL preserve-fares regression (RUN_DB_TESTS=1) plus units.
       - name: DB integration tests
         run: npm test

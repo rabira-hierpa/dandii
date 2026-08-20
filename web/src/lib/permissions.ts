@@ -73,7 +73,8 @@ export const routeOperatorRole = ac.newRole({
   fare: ["read", "create", "update", "delete"],
   closure: ["read", "create", "update", "delete"],
   proposal: ["review"],
-  feed: ["generate"],
+  // No `feed: ["generate"]`. Generating an export is a whole-network action
+  // held by a single-operator role, and the artifact spans every operator.
   // Everything except publish — a reseed + OTP rebuild is admin+ only.
   feedEdit: ["edit", "rename", "shape"],
 });

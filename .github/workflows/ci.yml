@@ -124,10 +124,23 @@ jobs:
       url: https://dev.dandii.app
     steps:
       - name: Trigger Coolify deployment
+        env:
+          COOLIFY_URL: ${{ secrets.COOLIFY_URL }}
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+          RESOURCE_UUID: ${{ secrets.COOLIFY_DEV_UUID }}
         run: |
+          # Skip cleanly rather than fail red when the secrets are not set
+          # yet. Merging this workflow before configuring Coolify is a
+          # sequencing choice, not a broken build.
+          if [ -z "$COOLIFY_URL" ] || [ -z "$RESOURCE_UUID" ]; then
+            echo "::notice::Coolify secrets not configured — skipping deploy."
+            echo "Add COOLIFY_URL, COOLIFY_TOKEN and COOLIFY_DEV_UUID."
+            echo "See docs/deployment.md."
+            exit 0
+          fi
           curl --fail --silent --show-error \
-            -X GET "${{ secrets.COOLIFY_URL }}/api/v1/deploy?uuid=${{ secrets.COOLIFY_DEV_UUID }}&force=false" \
-            -H "Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}"
+            -X GET "$COOLIFY_URL/api/v1/deploy?uuid=$RESOURCE_UUID&force=false" \
+            -H "Authorization: Bearer $COOLIFY_TOKEN"
 
   deploy-production:
     name: Deploy → addis.dandii.app
@@ -142,7 +155,20 @@ jobs:
       url: https://addis.dandii.app
     steps:
       - name: Trigger Coolify deployment
+        env:
+          COOLIFY_URL: ${{ secrets.COOLIFY_URL }}
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+          RESOURCE_UUID: ${{ secrets.COOLIFY_PROD_UUID }}
         run: |
+          # Skip cleanly rather than fail red when the secrets are not set
+          # yet. Merging this workflow before configuring Coolify is a
+          # sequencing choice, not a broken build.
+          if [ -z "$COOLIFY_URL" ] || [ -z "$RESOURCE_UUID" ]; then
+            echo "::notice::Coolify secrets not configured — skipping deploy."
+            echo "Add COOLIFY_URL, COOLIFY_TOKEN and COOLIFY_PROD_UUID."
+            echo "See docs/deployment.md."
+            exit 0
+          fi
           curl --fail --silent --show-error \
-            -X GET "${{ secrets.COOLIFY_URL }}/api/v1/deploy?uuid=${{ secrets.COOLIFY_PROD_UUID }}&force=false" \
-            -H "Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}"
+            -X GET "$COOLIFY_URL/api/v1/deploy?uuid=$RESOURCE_UUID&force=false" \
+            -H "Authorization: Bearer $COOLIFY_TOKEN"

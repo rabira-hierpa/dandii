@@ -36,6 +36,10 @@ Settings → Secrets and variables → Actions:
 | `COOLIFY_DEV_UUID` | UUID of the dev resource (in its Coolify URL) |
 | `COOLIFY_PROD_UUID` | UUID of the production resource |
 
+Until these exist the deploy jobs skip with a notice instead of failing, so
+you can merge this workflow before configuring Coolify without turning CI red.
+Once set, they deploy.
+
 Confirm the deploy endpoint against your Coolify version. The workflow uses
 `GET /api/v1/deploy?uuid=…&force=false` with a bearer token. Some versions
 expose a per-resource webhook URL instead, which needs no token — if that is

@@ -4,16 +4,17 @@ import { ConsolePageHeader } from "@/components/console/page-header";
 import type { ClosureReasonValue, OperatorCode } from "@/lib/operators";
 import { CONSOLE_ROLES } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
-import { requireRole } from "@/lib/session";
+import { requireConsoleScope } from "@/lib/session";
 import { activeClosureFilter } from "@/lib/transit";
 
 export const dynamic = "force-dynamic";
 
 export default async function NetworkMapPage() {
   const t = await getTranslations("console");
-  const { role } = await requireRole(CONSOLE_ROLES);
+  const { role, routeWhere } = await requireConsoleScope(CONSOLE_ROLES);
 
   const routes = await prisma.route.findMany({
+    where: routeWhere,
     select: {
       id: true,
       shortName: true,

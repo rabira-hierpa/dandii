@@ -94,7 +94,7 @@ interface NetworkMapProps {
  * distinct features (GTFS-X does the same).
  */
 function fetchRouteGeojson() {
-  return fetch(`/api/geo/routes?directions=both&t=${Date.now()}`, {
+  return fetch(`/api/console/geo/routes?t=${Date.now()}`, {
     cache: "no-store",
   }).then((res) => res.json() as Promise<GeoJSON.FeatureCollection>);
 }

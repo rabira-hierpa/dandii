@@ -9,7 +9,8 @@ import { getTranslations } from "next-intl/server";
 import { ConsolePageHeader } from "@/components/console/page-header";
 import { computeNetworkAnalytics } from "@/lib/analytics";
 import { CONSOLE_ROLES } from "@/lib/permissions";
-import { requireRole } from "@/lib/session";
+import { notFound } from "next/navigation";
+import { requireConsoleScope } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
@@ -35,7 +36,13 @@ function ChartCard({
 
 export default async function AnalyticsPage() {
   const t = await getTranslations("console");
-  await requireRole(CONSOLE_ROLES);
+  // Analytics answers a question about the whole network. Filtered to one
+  // operator it would be a different page, not a narrower one, so a scoped
+  // role is refused outright rather than shown a hollowed-out version.
+  // notFound() and not a redirect: the nav hides this, so arriving here means
+  // a typed URL or a stale link, and 404 is the honest answer for both.
+  const { scoped } = await requireConsoleScope(CONSOLE_ROLES);
+  if (scoped) notFound();
   const analytics = await computeNetworkAnalytics();
   const { kpis } = analytics;
 

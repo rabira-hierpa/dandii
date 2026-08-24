@@ -7,7 +7,8 @@ import {
 } from "@/components/console/charts";
 import { computeNetworkAnalytics } from "@/lib/analytics";
 import { CONSOLE_ROLES } from "@/lib/permissions";
-import { requireRole } from "@/lib/session";
+import { notFound } from "next/navigation";
+import { requireConsoleScope } from "@/lib/session";
 import { PrintButton } from "./print-button";
 
 export const dynamic = "force-dynamic";
@@ -17,7 +18,12 @@ export const dynamic = "force-dynamic";
  * the browser print dialog; the console chrome carries `print:hidden`.
  */
 export default async function AnalyticsReportPage() {
-  const { session } = await requireRole(CONSOLE_ROLES);
+  // The printable form of Analytics, network-wide for the same reason: a
+  // one-operator "fare by operator" table is a different report, not a
+  // filtered one. Refused outright for a scoped role.
+  const { session, scoped } = await requireConsoleScope(CONSOLE_ROLES);
+  if (scoped) notFound();
+
   const analytics = await computeNetworkAnalytics();
   const { kpis } = analytics;
   const generated = new Date(analytics.generatedAt);

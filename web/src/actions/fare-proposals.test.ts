@@ -15,6 +15,7 @@ const tx = vi.hoisted(() => ({
 }));
 const prisma = vi.hoisted(() => ({
   user: { findUnique: vi.fn() },
+  routeAssignment: { findMany: vi.fn() },
   fareProposal: { count: vi.fn(), findUnique: vi.fn() },
   route: { findUnique: vi.fn() },
   fare: { findUnique: vi.fn() },
@@ -275,5 +276,58 @@ describe("reviewProposal — rewards", () => {
     const bulkUpdateOrder =
       tx.fareProposal.updateMany.mock.invocationCallOrder[1];
     expect(findOrder).toBeLessThan(bulkUpdateOrder);
+  });
+});
+
+describe("operator scope", () => {
+  /**
+   * Approving a proposal writes a Fare on the proposal's route and credits the
+   * submitter. That is a write to a route someone else operates, so it is
+   * scoped like any other write to that route.
+   */
+  it("refuses to decide a proposal on another operator's route", async () => {
+    prisma.user.findUnique.mockResolvedValue({
+      role: "route-operator",
+      operatorCode: "ANBESSA",
+    });
+    prisma.routeAssignment.findMany.mockResolvedValue([
+      { routeId: "route-1", operator: { code: "LRT" } },
+    ]);
+
+    const result = await reviewProposal({
+      proposalId: "prop-1",
+      decision: "approve",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(applyFareChange).not.toHaveBeenCalled();
+  });
+
+  it("lets them decide a proposal on their own route", async () => {
+    prisma.user.findUnique.mockResolvedValue({
+      role: "route-operator",
+      operatorCode: "ANBESSA",
+    });
+    prisma.routeAssignment.findMany.mockResolvedValue([
+      { routeId: "route-1", operator: { code: "ANBESSA" } },
+    ]);
+
+    const result = await reviewProposal({
+      proposalId: "prop-1",
+      decision: "approve",
+    });
+
+    expect(result.ok).toBe(true);
+  });
+
+  it("leaves an admin's review unscoped", async () => {
+    const result = await reviewProposal({
+      proposalId: "prop-1",
+      decision: "approve",
+    });
+
+    expect(result.ok).toBe(true);
+    // Never even looked up assignments — a null scope short-circuits.
+    expect(prisma.routeAssignment.findMany).not.toHaveBeenCalled();
   });
 });

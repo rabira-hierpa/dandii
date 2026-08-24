@@ -19,6 +19,7 @@ function revalidateConsole() {
   revalidatePath("/console/routes");
   revalidatePath("/console/network");
   revalidatePath("/api/geo/routes");
+  revalidatePath("/api/console/geo/routes");
 }
 
 function zodError(err: unknown, fallback: string): { ok: false; error: string } {

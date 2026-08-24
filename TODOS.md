@@ -19,6 +19,31 @@
       their duplicates. By design: the pipeline is built, operators fill the
       rest in from the Stops tab.
 
+## P1 — Per-operator console scoping — DONE 2026-08-20
+
+Shipped in e1f7caa (writes: fares, closures, proposal review, feed:generate)
+and db4b218 (reads: 12 surfaces, requireConsoleScope, 404-not-403, scoped
+console map endpoint, nav hiding). 46 tests. Design and review record:
+docs/designs/operator-scoping-console.md.
+
+- [ ] **Before deploying:** run `scripts/backfill-operator-codes.ts` against
+      production and confirm it prints OK. Any `route-operator` with a null
+      `operatorCode` cannot open the console once this ships. CI runs it, but
+      against a fresh seed where it always passes — production is the real gate.
+
+## P2 — Per-operator admin tier (from /plan-eng-review 2026-08-20)
+
+- [ ] An **operator-admin** role that can invite and manage users within one
+      operator, without seeing the whole network.
+      **Why:** the invitation flow is per-operator but the *ability to invite*
+      is network-wide, so onboarding a new Anbessa dispatcher requires a
+      super-admin personally. Today that person is either a full admin (sees
+      every operator) or an ordinary route-operator (cannot invite at all).
+      **Cost:** another role in a six-family ACL matrix, and a second scoping
+      dimension to test (scope-of-data vs scope-of-user-management).
+      **Depends on:** docs/designs/operator-scoping-console.md landing first —
+      an operator-admin is meaningless until reads are scoped.
+
 ## P1 — Console Amharic, remaining (2026-08-19)
 
 Shell, nav, all seven page headers, the Members/Invitations headers and the

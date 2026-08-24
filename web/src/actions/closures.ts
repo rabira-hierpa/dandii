@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { ZodError } from "zod";
 import { MAINTAINER_REASONS } from "@/lib/operators";
 import { prisma } from "@/lib/prisma";
+import { denyOutOfScope } from "@/lib/operator-scope";
 import { requirePermission } from "@/lib/session";
 import { invalidateClosureCache } from "@/lib/transit";
 import { closureSchema, type ClosureInput } from "./closure-schema";
@@ -16,6 +17,7 @@ function revalidateConsole() {
   revalidatePath("/console/routes");
   revalidatePath("/console/network");
   revalidatePath("/api/geo/routes");
+  revalidatePath("/api/console/geo/routes");
 }
 
 /**
@@ -60,6 +62,13 @@ export async function createClosure(input: ClosureInput) {
     };
   }
 
+  // Before the kind branch, deliberately: WHOLE_ROUTE takes the entire line
+  // off the map, so it is the last kind that should skip a scope check.
+  const denied = await denyOutOfScope(session.user.id, {
+    routeId: data.routeId,
+  });
+  if (denied) return denied;
+
   let fromStopId: string | null = null;
   let toStopId: string | null = null;
 
@@ -103,12 +112,19 @@ export async function createClosure(input: ClosureInput) {
 
 /** Ends an active closure now (reopens the route). */
 export async function endClosure(closureId: string) {
-  await requirePermission({ closure: ["update"] });
+  const session = await requirePermission({ closure: ["update"] });
 
   const closure = await prisma.routeClosure.findUnique({
     where: { id: closureId },
   });
   if (!closure) return { ok: false as const, error: "Closure not found" };
+
+  // Scope resolves through the closure's own route: the caller supplies only
+  // a closure id, so the route has to be read before it can be checked.
+  const denied = await denyOutOfScope(session.user.id, {
+    routeId: closure.routeId,
+  });
+  if (denied) return denied;
 
   await prisma.routeClosure.update({
     where: { id: closureId },

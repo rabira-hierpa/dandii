@@ -4,7 +4,7 @@ import { ConsolePageHeader } from "@/components/console/page-header";
 import type { OperatorCode } from "@/lib/operators";
 import { OPERATOR_CODES } from "@/lib/operators";
 import { prisma } from "@/lib/prisma";
-import { requireRole } from "@/lib/session";
+import { requireConsoleScope } from "@/lib/session";
 import { CONSOLE_ROLES } from "@/lib/permissions";
 import { getClosedRouteIds, summarizeFare } from "@/lib/transit";
 import { RouteFilters } from "./filters";
@@ -20,7 +20,8 @@ export default async function RouteAssignmentPage({
   searchParams: Promise<{ q?: string; operator?: string; page?: string }>;
 }) {
   const t = await getTranslations("console");
-  const { role } = await requireRole(CONSOLE_ROLES);
+  const { role, routeWhere, scoped } =
+    await requireConsoleScope(CONSOLE_ROLES);
   const canAssign = role !== "maintainer";
   const canEdit = role !== "maintainer";
   const canDelete = role === "super-admin" || role === "admin";
@@ -46,6 +47,10 @@ export default async function RouteAssignmentPage({
     ...(operatorFilter
       ? { assignment: { operator: { code: operatorFilter } } }
       : {}),
+    // Last, deliberately: `routeWhere` writes the same `assignment.operator`
+    // key, so a scoped viewer's own operator overwrites whatever `?operator=`
+    // asked for. The URL is a convenience filter; identity is the boundary.
+    ...routeWhere,
   };
 
   const [routes, total, operators, closedIds] = await Promise.all([
@@ -126,7 +131,7 @@ export default async function RouteAssignmentPage({
           </a>
         }
       />
-      <RouteFilters resultCount={total} />
+      <RouteFilters resultCount={total} scoped={scoped} />
 
       <RoutesTable
         rows={rows}

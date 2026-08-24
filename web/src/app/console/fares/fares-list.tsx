@@ -48,6 +48,12 @@ export function FaresList({
     startTransition(async () => {
       try {
         const result = await bulkSetFare(payload);
+        if (!result.ok) {
+          // A scoped operator selecting a route they do not own lands here.
+          // Keep the selection so they can see which rows they picked.
+          setLastChange(result.error);
+          return;
+        }
         setLastChange(`Fares updated on ${result.count} routes`);
         setSelected(new Set());
         router.refresh();

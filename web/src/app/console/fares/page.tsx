@@ -5,7 +5,7 @@ import type { OperatorCode } from "@/lib/operators";
 import { OPERATOR_CODES } from "@/lib/operators";
 import { CONSOLE_ROLES } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
-import { requireRole } from "@/lib/session";
+import { requireConsoleScope } from "@/lib/session";
 import { RouteFilters } from "@/app/console/routes/filters";
 import type { FareRowData } from "./fare-row";
 import { FaresList } from "./fares-list";
@@ -20,7 +20,8 @@ export default async function FareManagementPage({
   searchParams: Promise<{ q?: string; operator?: string; page?: string }>;
 }) {
   const t = await getTranslations("console");
-  const { role } = await requireRole(CONSOLE_ROLES);
+  const { role, routeWhere, scoped } =
+    await requireConsoleScope(CONSOLE_ROLES);
   const readOnly = role === "maintainer";
 
   const params = await searchParams;
@@ -44,6 +45,8 @@ export default async function FareManagementPage({
     ...(operatorFilter
       ? { assignment: { operator: { code: operatorFilter } } }
       : {}),
+    // Overwrites the URL filter for a scoped viewer — see console/routes.
+    ...routeWhere,
   };
 
   const [routes, total] = await Promise.all([
@@ -126,7 +129,7 @@ export default async function FareManagementPage({
           </a>
         }
       />
-      <RouteFilters resultCount={total} />
+      <RouteFilters resultCount={total} scoped={scoped} />
 
       <FaresList rows={rows} readOnly={readOnly} />
 

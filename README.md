@@ -114,6 +114,11 @@ cd web && DATABASE_URL=postgresql://… npx tsx prisma/seed/index.ts
 On Coolify, expose only the `web` service (Traefik handles the domain and
 TLS); `postgis` and `otp` stay internal.
 
+**Deploys are automatic.** A push to `dev` deploys dev.dandii.app and a push
+to `main` deploys addis.dandii.app, both only after CI passes on that commit.
+Setup, required secrets, production env vars, and the dev-to-prod data
+migration runbook: [docs/deployment.md](docs/deployment.md).
+
 ## Updating the GTFS feed
 
 Drop the new feed into `data/gtfs-2026/` (combined extracted + sub-feed

@@ -30,6 +30,14 @@ export const stopCreateSchema = z.object({
 
 export const stopIdSchema = z.object({ stopId: z.string().min(1) });
 
+export const stopTranslateSchema = z.object({
+  stopId: z.string().min(1),
+  /** Null clears the Amharic name, falling back to the English `name`. */
+  nameAm: z.string().trim().min(1).max(255).nullable(),
+});
+
+export type StopTranslateInput = z.input<typeof stopTranslateSchema>;
+
 export type StopRenameInput = z.input<typeof stopRenameSchema>;
 export type StopCreateInput = z.input<typeof stopCreateSchema>;
 

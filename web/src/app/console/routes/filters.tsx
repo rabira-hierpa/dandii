@@ -16,7 +16,19 @@ const CHIPS: { value: string; label: string }[] = [
   })),
 ];
 
-export function RouteFilters({ resultCount }: { resultCount: number }) {
+export function RouteFilters({
+  resultCount,
+  scoped = false,
+}: {
+  resultCount: number;
+  /**
+   * True when the viewer only ever sees one operator. The chips are hidden
+   * rather than disabled: a scoped viewer clicking "Addis LRT" still gets
+   * their own routes back, so leaving the control visible shows a selected
+   * operator that does not match the rows underneath it.
+   */
+  scoped?: boolean;
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -74,7 +86,7 @@ export function RouteFilters({ resultCount }: { resultCount: number }) {
           />
         </div>
         <div className="flex flex-wrap gap-1.5">
-          {CHIPS.map((chip) => {
+          {!scoped && CHIPS.map((chip) => {
             const active = activeOperator === chip.value;
             return (
               <button

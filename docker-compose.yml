@@ -62,6 +62,18 @@ services:
         condition: service_started
     ports:
       - "3000:3000"
+    volumes:
+      # The base GTFS feed the exporter rewrites. Bind-mounted rather than
+      # baked in: the build context is ./web, so data/ is not in the image at
+      # all. Mounting it means updating the feed is a file copy plus a reseed
+      # rather than an image rebuild. Read-only — the exporter only reads it.
+      # This path is BASE_DIR_CANDIDATES[1] in lib/gtfs-export.ts, so
+      # GTFS_BASE_DIR does not need setting.
+      - ./data:/app/data:ro
+      # Generated feed zips. A named volume because the container writes here
+      # and the files must outlive a redeploy — without one, every published
+      # feed version is lost on the next deploy.
+      - gtfs_exports:/app/.gtfs-exports
     environment:
       DATABASE_URL: postgresql://admin:adminpassword@postgis:5432/gtfs_dev_db
       OTP_URL: http://otp:8080
@@ -71,6 +83,17 @@ services:
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
       SUPER_ADMIN_EMAIL: ${SUPER_ADMIN_EMAIL}
       G4A_TAG: ${G4A_TAG}
+      # Must match the volume above. The default resolves to /.gtfs-exports,
+      # outside /app and outside any volume.
+      GTFS_EXPORT_DIR: /app/.gtfs-exports
+      # Console invitations email through Resend. Unset is survivable — the UI
+      # falls back to "share this link directly" — but then every operator
+      # invite is hand-delivered.
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+      # Escape hatch if the feed is mounted somewhere other than /app/data.
+      GTFS_BASE_DIR: ${GTFS_BASE_DIR:-}
 
 volumes:
+  gtfs_exports:
   postgis_data:

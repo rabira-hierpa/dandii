@@ -194,6 +194,65 @@ export function applyRouteOverridesToCsv(
 }
 
 /**
+ * `shapes.txt` with operator-drawn route geometry substituted.
+ *
+ * A drawn shape replaces its block outright rather than patching cells: the
+ * operator redrew the line, so the old vertices are not corrections to apply,
+ * they are the thing being replaced. Points are renumbered from 1.
+ *
+ * `shape_dist_traveled` is left empty, which is what the DT4A feed does and what
+ * GTFS permits. Emitting a computed distance for redrawn shapes and nothing for
+ * the rest would be a worse feed than emitting neither.
+ *
+ * This is the largest table in the feed (~253k rows), so it is only parsed when
+ * a drawing actually exists.
+ */
+export function applyShapeOverridesToCsv(
+  content: string,
+  drawnByShapeId: Map<string, [number, number][]>,
+): string {
+  if (drawnByShapeId.size === 0) return content;
+
+  const parsed = Papa.parse<Row>(content.trim(), {
+    header: true,
+    skipEmptyLines: true,
+  });
+  const rows = parsed.data;
+  if (rows.length === 0) return content;
+  if (!Object.hasOwn(rows[0], "shape_id")) return content;
+
+  const columns = parsed.meta.fields ?? Object.keys(rows[0]);
+  const blank: Row = Object.fromEntries(columns.map((c) => [c, ""]));
+
+  // Group by shape, preserving first-appearance order so untouched shapes come
+  // back out exactly where they went in.
+  const blocks = new Map<string, Row[]>();
+  for (const row of rows) {
+    const block = blocks.get(row.shape_id);
+    if (block) block.push(row);
+    else blocks.set(row.shape_id, [row]);
+  }
+
+  for (const [shapeId, drawn] of drawnByShapeId) {
+    if (!blocks.has(shapeId) || drawn.length < 2) continue;
+    blocks.set(
+      shapeId,
+      drawn.map(([lon, lat], i) => ({
+        ...blank,
+        shape_id: shapeId,
+        shape_pt_lat: String(lat),
+        shape_pt_lon: String(lon),
+        shape_pt_sequence: String(i + 1),
+      })),
+    );
+  }
+
+  return (
+    Papa.unparse([...blocks.values()].flat(), { columns, newline: "\n" }) + "\n"
+  );
+}
+
+/**
  * `stop_times.txt` with operator-reordered calls rewritten.
  *
  * Unlike the other tables this is not a patch-by-id: nothing about an individual
@@ -293,4 +352,42 @@ export function applyTripOverridesToCsv(
       if (o.headsign !== null) row.trip_headsign = o.headsign;
     },
   });
+}
+
+/** One stop's Amharic name, as `translations.txt` records it. */
+export interface StopTranslation {
+  stopId: string;
+  nameAm: string;
+}
+
+/**
+ * Build `translations.txt` from the Amharic names the console holds.
+ *
+ * This is the GTFS-Translations extension, and it is the only correct place
+ * for an Amharic name: `stops.txt` has one `stop_name`, so writing Ge'ez into
+ * it would replace the Latin name every consumer already matches on rather
+ * than sit alongside it. Keyed by `record_id` (the stop_id) rather than
+ * `field_value`, which is the form that survives two stops sharing a name —
+ * and 2,271 Addis stops carry only 858 distinct names, so they do share.
+ *
+ * Returns an empty string when nothing is translated, so the caller can skip
+ * the file entirely instead of shipping a header with no rows.
+ */
+export function translationsCsv(rows: readonly StopTranslation[]): string {
+  if (rows.length === 0) return "";
+  const columns = [
+    "table_name",
+    "field_name",
+    "language",
+    "translation",
+    "record_id",
+  ];
+  const data = rows.map((row) => ({
+    table_name: "stops",
+    field_name: "stop_name",
+    language: "am",
+    translation: row.nameAm,
+    record_id: row.stopId,
+  }));
+  return Papa.unparse(data, { columns, newline: "\n" }) + "\n";
 }

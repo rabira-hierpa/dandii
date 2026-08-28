@@ -9,6 +9,7 @@ import MapGl, {
 } from "react-map-gl/maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { RouteTabBody } from "@/components/console/route-tab-body";
+import { PickedStopLayer } from "@/components/console/picked-stop-layer";
 import { RouteTabs } from "@/components/console/route-tabs";
 import { ShapeContextMenu } from "@/components/console/shape-context-menu";
 import {
@@ -22,6 +23,7 @@ import { useShapeDraw } from "@/hooks/use-shape-draw";
 import { useShapeDrawController } from "@/hooks/use-shape-draw-controller";
 import { useRouteEditorStore } from "@/stores/route-editor-store";
 import { useShapeDrawStore } from "@/stores/shape-draw-store";
+import { useStopPlacementStore } from "@/stores/stop-placement-store";
 import type { RouteEditorDetail } from "@/types/console";
 import { RouteChip } from "@/components/console/route-chip";
 import type { ClosureKind } from "@/lib/closures";
@@ -92,7 +94,7 @@ interface NetworkMapProps {
  * distinct features (GTFS-X does the same).
  */
 function fetchRouteGeojson() {
-  return fetch(`/api/geo/routes?directions=both&t=${Date.now()}`, {
+  return fetch(`/api/console/geo/routes?t=${Date.now()}`, {
     cache: "no-store",
   }).then((res) => res.json() as Promise<GeoJSON.FeatureCollection>);
 }
@@ -355,6 +357,23 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
     [visibleCodes],
   );
 
+  const placing = useStopPlacementStore((st) => st.placing);
+  const mapShellRef = useRef<HTMLDivElement>(null);
+
+  // The Stops tab sits above the map in the console's single column, so on a
+  // laptop "Pick on map" leaves the operator looking at a form with no map in
+  // sight and nothing to click. Bring the map to them.
+  useEffect(() => {
+    if (!placing) return;
+    // Instant, not smooth: the operator pressed a button to go click the map,
+    // so an animation is 400ms of not being able to do the thing they asked
+    // for. (Smooth is also a no-op in headless Chromium, so this stays
+    // verifiable.)
+    mapShellRef.current?.scrollIntoView({ behavior: "auto", block: "center" });
+  }, [placing]);
+  const pickPoint = useStopPlacementStore((st) => st.pick);
+  const pickedPoint = useStopPlacementStore((st) => st.picked);
+
   const onMapClick = (event: MapLayerMouseEvent) => {
     if (contextMenu) closeContextMenu();
 
@@ -364,6 +383,15 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
     // half-finished drawing with it.
     if (drawing) {
       shape.placeWaypoint(event);
+      return;
+    }
+
+    // Placing a stop, like drawing, consumes the click whole: falling through
+    // would also change the route selection and swap the editor out from under
+    // the half-filled create form. Drawing is checked first so a click can only
+    // ever resolve to one mode, even if both flags were somehow set.
+    if (placing) {
+      pickPoint({ lat: event.lngLat.lat, lon: event.lngLat.lng });
       return;
     }
 
@@ -533,7 +561,10 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
           </span>
         </div>
 
-        <div className="relative h-[90vh] min-h-100 overflow-hidden rounded-lg">
+        <div
+          ref={mapShellRef}
+          className="relative h-[90vh] min-h-100 overflow-hidden rounded-lg"
+        >
           <button
             type="button"
             aria-label="Transit layers"
@@ -555,6 +586,19 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
               onEditShape={shape.onEditShapeFromMenu}
               onResetShape={shape.onResetShapeFromMenu}
             />
+          )}
+          {/* The console pulls both directions of 891 shapes at full drawing
+              fidelity — a few megabytes. Without this the map paints an empty
+              basemap first and the network pops in, which reads as "no routes"
+              rather than "still loading". */}
+          {!geojson && (
+            <div
+              role="status"
+              aria-live="polite"
+              className="pointer-events-none absolute top-2.5 left-2.5 z-10 rounded-lg border border-[#E2E6DE] bg-white/95 px-2.5 py-1.5 text-[12.5px] text-[#5C6B5E] shadow-sm backdrop-blur"
+            >
+              Loading routes…
+            </div>
           )}
           {hover.route && (
             <div className="pointer-events-none absolute top-2.5 left-2.5 z-10 flex max-w-[80%] items-center gap-2 rounded-lg border border-[#E2E6DE] bg-white/95 px-2.5 py-1.5 shadow-sm backdrop-blur">
@@ -584,8 +628,13 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
             interactiveLayerIds={
               drawing
                 ? [SHAPE_WAYPOINT_LAYER_ID]
-                : ["routes-open", "routes-closed"]
+                : placing
+                  ? []
+                  : ["routes-open", "routes-closed"]
             }
+            // A crosshair says "this click means a coordinate", which is the
+            // only cue that the next click will not select a route.
+            cursor={placing ? "crosshair" : undefined}
             // A double-click would otherwise drop two waypoints and zoom.
             doubleClickZoom={!drawing}
             onClick={onMapClick}
@@ -595,6 +644,7 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
             onMoveStart={contextMenu ? closeContextMenu : undefined}
             style={{ width: "100%", height: "100%" }}
           >
+            <PickedStopLayer point={pickedPoint} />
             {geojson && (
               <Source id="routes" type="geojson" data={geojson}>
                 <Layer

@@ -31,6 +31,12 @@ export const statement = {
   //             it takes the whole network down for a graph rebuild.
   feedEdit: ["edit", "rename", "shape", "publish"],
   system: ["settings"],
+  // Inviting a new console member (or upgrading an existing account) to a
+  // role. Held by the same roles that manage members in Settings — a
+  // narrower slice of `user` management, kept as its own resource so an
+  // invitation's role is checked against ASSIGNABLE_ROLES independent of
+  // better-auth's own `user:set-role` gate.
+  invitation: ["create", "revoke"],
 } as const;
 
 export const ac = createAccessControl(statement);
@@ -44,6 +50,7 @@ export const superAdminRole = ac.newRole({
   feed: ["generate"],
   feedEdit: ["edit", "rename", "shape", "publish"],
   system: ["settings"],
+  invitation: ["create", "revoke"],
 });
 
 export const adminRole = ac.newRole({
@@ -57,6 +64,7 @@ export const adminRole = ac.newRole({
   feed: ["generate"],
   feedEdit: ["edit", "rename", "shape", "publish"],
   system: ["settings"],
+  invitation: ["create", "revoke"],
 });
 
 export const routeOperatorRole = ac.newRole({
@@ -65,7 +73,8 @@ export const routeOperatorRole = ac.newRole({
   fare: ["read", "create", "update", "delete"],
   closure: ["read", "create", "update", "delete"],
   proposal: ["review"],
-  feed: ["generate"],
+  // No `feed: ["generate"]`. Generating an export is a whole-network action
+  // held by a single-operator role, and the artifact spans every operator.
   // Everything except publish — a reseed + OTP rebuild is admin+ only.
   feedEdit: ["edit", "rename", "shape"],
 });
@@ -95,6 +104,9 @@ export const roles = {
 
 export type AppRole = keyof typeof roles;
 
+/** Every assignable role, as a runtime tuple — for zod enums and iteration. */
+export const APP_ROLES = Object.keys(roles) as [AppRole, ...AppRole[]];
+
 /** Roles allowed into the ops console at all. */
 export const CONSOLE_ROLES: AppRole[] = [
   "super-admin",
@@ -107,6 +119,13 @@ export const CONSOLE_ROLES: AppRole[] = [
 export const SETTINGS_ROLES: AppRole[] = ["super-admin", "admin"];
 
 /** Role-assignment power: which roles each role may grant. */
+/**
+ * Roles that operate one operator's routes rather than the whole network.
+ * A user holding one of these must carry a `User.operatorCode`; every other
+ * role must not. `lib/operator-scope.ts` treats a violation as a denial.
+ */
+export const OPERATOR_SCOPED_ROLES: AppRole[] = ["route-operator"];
+
 export const ASSIGNABLE_ROLES: Record<string, AppRole[]> = {
   "super-admin": ["super-admin", "admin", "route-operator", "maintainer", "user"],
   admin: ["route-operator", "maintainer", "user"],

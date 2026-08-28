@@ -1,13 +1,22 @@
+import { getTranslations } from "next-intl/server";
 import { ConsolePageHeader } from "@/components/console/page-header";
 import { CONSOLE_ROLES } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
-import { requireRole } from "@/lib/session";
+import { notFound } from "next/navigation";
+import { requireConsoleScope } from "@/lib/session";
 import { FeedVersionsList, type FeedVersionRow } from "./feed-versions-list";
 
 export const dynamic = "force-dynamic";
 
 export default async function FeedVersionsPage() {
-  await requireRole(CONSOLE_ROLES);
+  const t = await getTranslations("console");
+  // Feed Versions answers a question about the whole network. Filtered to one
+  // operator it would be a different page, not a narrower one, so a scoped
+  // role is refused outright rather than shown a hollowed-out version.
+  // notFound() and not a redirect: the nav hides this, so arriving here means
+  // a typed URL or a stale link, and 404 is the honest answer for both.
+  const { scoped } = await requireConsoleScope(CONSOLE_ROLES);
+  if (scoped) notFound();
 
   const [versions, pendingProposals, fareCount, lastVersion] = await Promise.all([
     prisma.feedVersion.findMany({
@@ -69,8 +78,8 @@ export default async function FeedVersionsPage() {
   return (
     <>
       <ConsolePageHeader
-        title="Feed Versions"
-        subtitle="Versioned GTFS exports — approved fares overlaid on the base feed"
+        title={t("feeds.title")}
+        subtitle={t("feeds.subtitle")}
       />
       <FeedVersionsList
         rows={rows}

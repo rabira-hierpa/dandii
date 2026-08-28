@@ -5,11 +5,7 @@ import {
   type ClosureRange,
 } from "@/lib/closures";
 import { prisma } from "@/lib/prisma";
-import {
-  buildDirectionalFeatures,
-  loadClosureAnchors,
-  loadDirectionalShapes,
-} from "@/lib/route-shape-features";
+import { loadDirectionalFeatureCollection } from "@/lib/route-shape-features";
 import { getActiveClosures } from "@/lib/transit";
 
 type RouteRow = {
@@ -69,27 +65,10 @@ export async function GET(request: NextRequest) {
   }
 
   if (bothDirections) {
-    const [shapes, anchors] = await Promise.all([
-      loadDirectionalShapes(),
-      loadClosureAnchors(active),
-    ]);
-    return jsonWithCache(
-      buildDirectionalFeatures(
-        shapes,
-        (routes as RouteRow[]).map((r) => ({
-          id: r.id,
-          shortName: r.shortName,
-          longName: r.longName,
-          type: r.type,
-          lengthMeters: r.lengthMeters,
-          operatorCode: r.assignment?.operator.code ?? null,
-          colorOverride: colorByRoute.get(r.id) ?? null,
-        })),
-        byRoute,
-        anchors,
-      ),
-      active.length > 0,
-    );
+    // Unscoped ({}) — this endpoint serves the public rider map and must keep
+    // returning every route. The console calls the same helper with a filter.
+    const { features: directional } = await loadDirectionalFeatureCollection({});
+    return jsonWithCache(directional, active.length > 0);
   }
 
   const features: GeoJSON.Feature[] = [];

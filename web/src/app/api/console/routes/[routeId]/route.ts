@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import type { OperatorCode } from "@/lib/operators";
 import { prisma } from "@/lib/prisma";
-import { requirePermission } from "@/lib/session";
+import { requirePermissionScope } from "@/lib/session";
 import type {
   RouteDirection,
   RouteEditorDetail,
@@ -23,11 +23,17 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ routeId: string }> },
 ) {
-  await requirePermission({ feedEdit: ["edit"] });
+  const { routeWhere } = await requirePermissionScope({
+    feedEdit: ["edit"],
+  });
   const { routeId } = await params;
 
-  const route = await prisma.route.findUnique({
-    where: { id: routeId },
+  // findFirst, not findUnique: the scope filter has to sit in the same
+  // `where`, and the out-of-scope case then falls straight into the existing
+  // 404 below. An out-of-scope route is indistinguishable from a missing one,
+  // so a scoped operator cannot enumerate ids or learn who owns them.
+  const route = await prisma.route.findFirst({
+    where: { id: routeId, ...routeWhere },
     select: {
       id: true,
       shortName: true,
@@ -63,7 +69,14 @@ export async function GET(
             arrival: true,
             departure: true,
             stop: {
-              select: { id: true, name: true, lat: true, lon: true, origin: true },
+              select: {
+                id: true,
+                name: true,
+                nameAm: true,
+                lat: true,
+                lon: true,
+                origin: true,
+              },
             },
           },
         },
@@ -155,6 +168,7 @@ export async function GET(
     stopsByDirection[dir] = trip.stopTimes.map((st) => ({
       id: st.stop.id,
       name: st.stop.name,
+      nameAm: st.stop.nameAm,
       lat: st.stop.lat,
       lon: st.stop.lon,
       sequence: st.sequence,

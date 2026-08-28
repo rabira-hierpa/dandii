@@ -2,7 +2,7 @@ import { ConsoleMobileNav } from "@/components/console/mobile-nav";
 import { ConsoleSidebar } from "@/components/console/sidebar";
 import { CONSOLE_ROLES, SETTINGS_ROLES } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
-import { requireRole } from "@/lib/session";
+import { requireConsoleScope } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
@@ -11,15 +11,18 @@ export default async function ConsoleLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { session, role } = await requireRole(CONSOLE_ROLES);
+  const { session, role, routeWhere, scoped } =
+    await requireConsoleScope(CONSOLE_ROLES);
   const user = {
     name: session.user.name,
     email: session.user.email,
     role,
   };
   const canManageSettings = SETTINGS_ROLES.includes(role);
+  // Scoped too: an unscoped badge would count other operators' proposals and
+  // send a dispatcher to a queue that turns out to be empty for them.
   const pendingProposals = await prisma.fareProposal.count({
-    where: { status: "PENDING" },
+    where: { status: "PENDING", ...(scoped ? { route: routeWhere } : {}) },
   });
 
   return (
@@ -28,11 +31,13 @@ export default async function ConsoleLayout({
         user={user}
         canManageSettings={canManageSettings}
         pendingProposals={pendingProposals}
+        scoped={scoped}
       />
       <ConsoleMobileNav
         user={user}
         canManageSettings={canManageSettings}
         pendingProposals={pendingProposals}
+        scoped={scoped}
       />
       <main className="min-w-0 flex-1 px-9 pt-7 pb-12 max-sm:px-4 max-sm:pt-20 max-sm:pb-26">
         {children}

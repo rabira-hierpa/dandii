@@ -1,20 +1,85 @@
 # TODOS
 
+## P1 — Operator scoping + Amharic (2026-08-19)
+
+- [x] Invitation workflow scoped per operator. The first cut invited people to
+      a *role*, which left the operator picker decorative: any route-operator
+      could edit LRT's routes and reassign them to themselves. `Invitation`
+      and `User` now carry `operatorCode`, `lib/operator-scope.ts` enforces it
+      on all twelve feed-edit mutations plus updateRoute/bulkAssignRoutes, and
+      `setMemberRole` replaced the client-side better-auth `setRole` that knew
+      nothing about the column (demoting an admin through it left the scope
+      null — i.e. network-wide). 37 tests.
+- [x] Amharic stop names reach the published feed. The console could set one
+      and the seed could read one, but the exporter wrote neither, so a typed
+      name showed on our map and nowhere else. `translations.txt` is now
+      generated from the effective names, keyed by `record_id` because 2,271
+      stops share 858 names. Verified: v5 carries 243 rows, v4 had no file.
+- [ ] Amharic coverage is 243/2270 stops (10.7%) — the 31 curated hubs plus
+      their duplicates. By design: the pipeline is built, operators fill the
+      rest in from the Stops tab.
+
+## P1 — Per-operator console scoping — DONE 2026-08-20
+
+Shipped in e1f7caa (writes: fares, closures, proposal review, feed:generate)
+and db4b218 (reads: 12 surfaces, requireConsoleScope, 404-not-403, scoped
+console map endpoint, nav hiding). 46 tests. Design and review record:
+docs/designs/operator-scoping-console.md.
+
+- [ ] **Before deploying:** run `scripts/backfill-operator-codes.ts` against
+      production and confirm it prints OK. Any `route-operator` with a null
+      `operatorCode` cannot open the console once this ships. CI runs it, but
+      against a fresh seed where it always passes — production is the real gate.
+
+## P2 — Per-operator admin tier (from /plan-eng-review 2026-08-20)
+
+- [ ] An **operator-admin** role that can invite and manage users within one
+      operator, without seeing the whole network.
+      **Why:** the invitation flow is per-operator but the *ability to invite*
+      is network-wide, so onboarding a new Anbessa dispatcher requires a
+      super-admin personally. Today that person is either a full admin (sees
+      every operator) or an ordinary route-operator (cannot invite at all).
+      **Cost:** another role in a six-family ACL matrix, and a second scoping
+      dimension to test (scope-of-data vs scope-of-user-management).
+      **Depends on:** docs/designs/operator-scoping-console.md landing first —
+      an operator-admin is meaningless until reads are scoped.
+
+## P1 — Console Amharic, remaining (2026-08-19)
+
+Shell, nav, all seven page headers, the Members/Invitations headers and the
+Stops-tab create form are converted. Page **bodies** are not — roughly 110 of
+the ~148 strings. Highest traffic first:
+- [ ] network page body (search box, "Currently closed", filter chips, hints)
+- [ ] fares page body (table headers, tier controls, History disclosure)
+- [ ] proposals / feeds / analytics page bodies
+- [ ] members-table and invitations-panel bodies (headers, buttons, statuses)
+- [ ] route editor tabs: details, trips, service, shapes
+- [ ] **Native review of every Amharic string already added.** Mine is a
+      draft. The operational vocabulary is where the risk is — የፊድ ስሪቶች
+      (feed versions), ኬክሮስ/ኬንትሮስ (lat/lon), ፌርማታ (stop), ታሪፍ (fare).
+      docs/rewards-and-amharic-design.md §4 called this the real gate on the
+      feature, and it still is.
+
 ## P1 — Deferred from fare-registry plan (ship 2026-07-23)
 
 - [ ] Console fare-history UI (FareChangeLog exists; no console surface yet)
-- [ ] Unit/integration tests for fare-proposal action guards (dedup, rate limit, double-decision)
+- [x] Unit/integration tests for fare-proposal action guards — 16 tests covering
+      the rolling-24h limit, the partial-unique dedup translation (and that it
+      does NOT swallow unrelated DB errors), the double-decision status guard,
+      the per-route advisory lock, and the sibling-credit ordering.
 - [ ] Playwright authenticated wedge: submit → approve → fare on sheet → export
 
-## P1 — Planner ignores direction on partial closures (found 2026-08-12)
+## ~~P1 — Planner ignores direction on partial closures~~ FIXED 2026-08-18
 
-`isPairClosed` matches closures by stop id, but 406 of the 444 two-direction
-routes share NO stop ids between their directions. So closing a stretch almost
-certainly blocks only the direction whose stop ids the operator picked and
-leaves the return journey planning as if the road were open. Unverified at
-runtime — the map path was fixed in T0 by falling back to geometry, and the
-planner needs the same treatment (or a stop-cluster concept, which would also
-fix search grouping and the T3b cascade).
+Confirmed against the dev database: **406 of 444** two-direction routes (91.4%)
+share no stop ids between directions, and zero share all of them. A closure
+entered against outbound stops left the return journey planning straight through
+the blocked road.
+
+Fixed by resolving the closed window by position instead of by id
+(`resolveClosedWindow` in `lib/closures.ts`, 150 m snap tolerance), the same
+treatment the map got in T0. 8 tests. A stop-cluster concept would still be the
+better long-term answer and would also fix search grouping and the T3b cascade.
 
 ## P2 — Deferred from partial-closures autoplan (2026-08-07)
 
@@ -23,7 +88,9 @@ fix search grouping and the T3b cascade).
 - [ ] Playwright: console create SEVERED → map split → directions open-leg / spanning OD
       (all four verified manually against the dev DB on 2026-08-10; only the
       browser-level console form submit is still unexercised)
-- [ ] Short TTL cache for active closures on the directions hot path
+- [x] Short TTL cache for active closures on the directions hot path (10 s,
+      dropped on every closure write). Only the live "now" read is cached — a
+      dated query bypasses it and can't poison it.
 
 ## P1 — Batch D (route/stop editor), in progress 2026-08-10
 
@@ -42,8 +109,18 @@ Tabs: Details | Stops | Trips | Service. Costs/Coverage dropped, Shapes deferred
 - [x] T3: Trips tab (editable block_id via TripOverride) + Service tab.
       network-map.tsx is 1171 -> 731 lines and complexity 51 -> 17. Both it and
       route-service-tab sit at 17 against the limit of 15 — worth a second pass.
-- [ ] Route "+ Add route" entry point: createRoute action exists and is tested
-      by duplicate, but nothing in the UI calls it yet
+- [x] Route "+ Add route" entry point — already existed at /console/routes, and
+      it was **silently dropping routes from the published feed**: `origin`
+      defaults to FEED and the exporter only collects created routes with
+      `origin: OPERATOR`, so a route added in the console showed on the map and
+      then vanished on publish. Fixed + regression test; one live route (A25)
+      repaired in the dev DB.
+- [x] **DRY: two createRoute actions.** Both now go through `createRouteRow` in
+      `lib/route-create.ts`. The two entry points stay — their permissions and
+      callers genuinely differ, and permissions.ts documents why — but id
+      generation, agency lookup, `origin: OPERATOR` and assignment live in one
+      place. Ids are `op:` from both doors now (`manual-` was only ever mentioned
+      in a comment, never branched on).
 - [ ] T3b: cascade switch — affected-route count (distinct, max 26 at Torhayloch)
       + grouped closures sharing a cascadeId, reopened together
 - [x] T4: stop reordering (5b). `reorderRouteStops` + `RouteStopOrderOverride` +
@@ -64,13 +141,17 @@ graph in CAR mode — verified 6,067m road-following vs 4,138m straight-line.
       timeout, a concurrency cap of 6, and a per-operator snap throttle.
       54 new tests. network-map.tsx is finally under the complexity limit
       (17 -> 21 -> under) after extracting route-tab-body and use-route-hover.
-- [ ] S3: apply-overrides replays ShapeOverride; export regenerates shapes.txt
+- [x] S3: apply-overrides replays ShapeOverride (a reseed no longer silently
+      replaces every drawn line with DT4A's original) and the export regenerates
+      shapes.txt. Stored geojson is written back verbatim rather than re-snapped,
+      so an OTP graph rebuild can't quietly redraw geometry a human approved.
 - [x] Restore corrupted punctuation in network-map.tsx
 
 Deferred from the S2 QA pass (2026-08-17):
-- [ ] P2 — Component test infrastructure (@testing-library/react + jsdom). The
-      "detail fetch failed → blank panel" bug is a render-branch bug with no way
-      to test it; the repo has unit tests only.
+- [x] P2 — Component test infrastructure (@testing-library/react + jsdom).
+      Per-file opt-in via `// @vitest-environment jsdom`, so the suite stays on
+      node. First test covers the "detail fetch failed → blank panel" bug;
+      verified it fails when the fix is reverted.
 
 Deferred from the S2 autoplan (2026-08-16):
 - [ ] P2 — Playwright E2E: draw -> save -> export contains the drawn shapes.txt.

@@ -16,6 +16,16 @@ describe("role matrix (T3)", () => {
     ] as const) {
       const statements = roles[role].statements;
       expect(statements.proposal).toContain("review");
+    }
+  });
+
+  it("does not let a route-operator generate a network-wide feed", () => {
+    // The export spans every operator, so generating one is not an action a
+    // single-operator role should hold. Admins and maintainers keep it.
+    const scoped = roles["route-operator"].statements as Record<string, unknown>;
+    expect(scoped.feed).toBeUndefined();
+    for (const role of ["super-admin", "admin", "maintainer"] as const) {
+      const statements = roles[role].statements as Record<string, unknown>;
       expect(statements.feed).toContain("generate");
     }
   });

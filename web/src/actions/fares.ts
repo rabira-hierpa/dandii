@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { applyFareChange, type FareData } from "@/lib/fare-write";
 import { prisma } from "@/lib/prisma";
+import { denyOutOfScope } from "@/lib/operator-scope";
 import { requirePermission } from "@/lib/session";
 import { fareSchema, tierSchema, type FareInput } from "./fare-schema";
 
@@ -18,6 +19,11 @@ function toFareData(
 export async function updateFare(input: FareInput) {
   const session = await requirePermission({ fare: ["update"] });
   const data = fareSchema.parse(input);
+
+  const denied = await denyOutOfScope(session.user.id, {
+    routeId: data.routeId,
+  });
+  if (denied) return denied;
 
   await prisma.$transaction((tx) =>
     applyFareChange(tx, data.routeId, toFareData(data), {
@@ -48,6 +54,13 @@ const bulkFareSchema = z.discriminatedUnion("kind", [
 export async function bulkSetFare(input: z.infer<typeof bulkFareSchema>) {
   const session = await requirePermission({ fare: ["update"] });
   const data = bulkFareSchema.parse(input);
+
+  // Checked as a set: a bulk write that silently dropped the routes the
+  // operator does not own would report a count they cannot reconcile.
+  const denied = await denyOutOfScope(session.user.id, {
+    routeIds: data.routeIds,
+  });
+  if (denied) return denied;
   const fareData: FareData =
     data.kind === "FLAT"
       ? { kind: "FLAT", flatAmountEtb: data.flatAmountEtb }

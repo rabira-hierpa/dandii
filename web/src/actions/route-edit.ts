@@ -3,7 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { ZodError } from "zod";
 import { prisma } from "@/lib/prisma";
+import { createRouteRow, operatorId } from "@/lib/route-create";
 import { requirePermission } from "@/lib/session";
+import { denyOutOfScope, getUserOperatorCode } from "@/lib/operator-scope";
 import {
   routeCreateSchema,
   routeEditSchema,
@@ -17,6 +19,7 @@ function revalidateConsole() {
   revalidatePath("/console/routes");
   revalidatePath("/console/network");
   revalidatePath("/api/geo/routes");
+  revalidatePath("/api/console/geo/routes");
 }
 
 function zodError(err: unknown, fallback: string): { ok: false; error: string } {
@@ -24,15 +27,6 @@ function zodError(err: unknown, fallback: string): { ok: false; error: string } 
     return { ok: false, error: err.issues[0]?.message ?? fallback };
   }
   throw err;
-}
-
-/**
- * Ids for operator-authored entities. The feed uses `node/…` / `way/…` for
- * stops and bare numerics for routes, so an `op:` prefix cannot collide with
- * anything DT4A ships — including a future revision that reuses ids.
- */
-function operatorId(): string {
-  return `op:${crypto.randomUUID()}`;
 }
 
 /**
@@ -51,6 +45,11 @@ export async function updateRouteFields(input: RouteEditInput) {
   } catch (err) {
     return zodError(err, "Invalid route edit");
   }
+
+  const denied = await denyOutOfScope(session.user.id, {
+    routeId: data.routeId,
+  });
+  if (denied) return denied;
 
   const route = await prisma.route.findUnique({
     where: { id: data.routeId },
@@ -121,38 +120,47 @@ export async function createRoute(input: RouteCreateInput) {
     return zodError(err, "Invalid route");
   }
 
+  // A scoped operator creates routes under their own operator or not at all —
+  // otherwise the picker in the form is the only thing stopping them from
+  // filing a line under someone else's name.
+  const scope = await getUserOperatorCode(session.user.id);
+  if (scope !== null && data.operatorCode !== scope) {
+    return {
+      ok: false as const,
+      error: `You can only create routes for ${scope}`,
+    };
+  }
+
   const operator = await prisma.operator.findUnique({
     where: { code: data.operatorCode },
     select: { id: true },
   });
   if (!operator) return { ok: false as const, error: "Unknown operator" };
 
-  // agency_id has to name a real agency or the exported feed fails validation.
-  const agency = await prisma.agency.findFirst({ select: { id: true } });
-  if (!agency) return { ok: false as const, error: "No agency to attach to" };
-
-  const id = operatorId();
-  await prisma.route.create({
-    data: {
-      id,
-      shortName: data.shortName,
-      longName: data.longName,
-      type: data.type,
-      color: data.color ?? null,
-      textColor: data.textColor ?? null,
-      agencyId: agency.id,
-      origin: "OPERATOR",
-      assignment: { create: { operatorId: operator.id } },
-    },
+  // Shared with the console routes table's createRoute. The permissions differ
+  // by design; the row invariants must not (see lib/route-create.ts).
+  const created = await createRouteRow({
+    shortName: data.shortName,
+    longName: data.longName,
+    type: data.type,
+    color: data.color ?? null,
+    textColor: data.textColor ?? null,
+    operatorId: operator.id,
   });
+  if (!created.ok) return { ok: false as const, error: created.error };
+
   if (data.desc) {
     await prisma.routeOverride.create({
-      data: { routeId: id, desc: data.desc, editedById: session.user.id },
+      data: {
+        routeId: created.routeId,
+        desc: data.desc,
+        editedById: session.user.id,
+      },
     });
   }
 
   revalidateConsole();
-  return { ok: true as const, data: { routeId: id } };
+  return { ok: true as const, data: { routeId: created.routeId } };
 }
 
 /**
@@ -172,6 +180,11 @@ export async function duplicateRoute(input: { routeId: string }) {
   } catch (err) {
     return zodError(err, "Invalid route");
   }
+
+  const denied = await denyOutOfScope(session.user.id, {
+    routeId: data.routeId,
+  });
+  if (denied) return denied;
 
   const source = await prisma.route.findUnique({
     where: { id: data.routeId },
@@ -225,6 +238,11 @@ export async function deleteRoute(input: { routeId: string }) {
   } catch (err) {
     return zodError(err, "Invalid route");
   }
+
+  const denied = await denyOutOfScope(session.user.id, {
+    routeId: data.routeId,
+  });
+  if (denied) return denied;
 
   const route = await prisma.route.findUnique({
     where: { id: data.routeId },

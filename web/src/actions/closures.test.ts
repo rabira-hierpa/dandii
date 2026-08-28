@@ -13,6 +13,8 @@ const session = vi.hoisted(() => ({
   current: { user: { id: "user-1", role: "super-admin" } },
 }));
 const prisma = vi.hoisted(() => ({
+  user: { findUnique: vi.fn() },
+  routeAssignment: { findMany: vi.fn() },
   trip: { findFirst: vi.fn() },
   routeClosure: { create: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
 }));
@@ -39,6 +41,7 @@ const whole = () => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  prisma.user.findUnique.mockResolvedValue({ role: "admin", operatorCode: null });
   session.current = { user: { id: "user-1", role: "super-admin" } };
   prisma.routeClosure.create.mockResolvedValue({});
   prisma.routeClosure.findUnique.mockResolvedValue({ id: "c1" });
@@ -211,5 +214,57 @@ describe("endClosure", () => {
     expect(result.ok).toBe(false);
     expect(result.ok === false && result.error).toBe("Closure not found");
     expect(prisma.routeClosure.update).not.toHaveBeenCalled();
+  });
+});
+
+describe("operator scope", () => {
+  /**
+   * A closure takes a route off the map and reroutes the planner around it, so
+   * it reaches riders directly. Scoping it is the reason PR-1 exists.
+   */
+  function anbessaDispatcher() {
+    prisma.user.findUnique.mockResolvedValue({
+      role: "route-operator",
+      operatorCode: "ANBESSA",
+    });
+  }
+
+  it("refuses to close another operator's route", async () => {
+    anbessaDispatcher();
+    prisma.routeAssignment.findMany.mockResolvedValue([
+      { routeId: "route-1", operator: { code: "LRT" } },
+    ]);
+
+    const result = await createClosure({ ...whole(), routeId: "route-1" });
+
+    expect(result.ok).toBe(false);
+    expect(prisma.routeClosure.create).not.toHaveBeenCalled();
+  });
+
+  it("refuses to end a closure on another operator's route", async () => {
+    anbessaDispatcher();
+    prisma.routeClosure.findUnique.mockResolvedValue({
+      id: "c1",
+      routeId: "route-1",
+    });
+    prisma.routeAssignment.findMany.mockResolvedValue([
+      { routeId: "route-1", operator: { code: "SHEGER" } },
+    ]);
+
+    const result = await endClosure("c1");
+
+    expect(result.ok).toBe(false);
+    expect(prisma.routeClosure.update).not.toHaveBeenCalled();
+  });
+
+  it("still lets them close their own route", async () => {
+    anbessaDispatcher();
+    prisma.routeAssignment.findMany.mockResolvedValue([
+      { routeId: "route-1", operator: { code: "ANBESSA" } },
+    ]);
+
+    const result = await createClosure({ ...whole(), routeId: "route-1" });
+
+    expect(result.ok).toBe(true);
   });
 });

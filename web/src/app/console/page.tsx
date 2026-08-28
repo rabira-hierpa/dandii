@@ -1,15 +1,24 @@
+import { getTranslations } from "next-intl/server";
 import { ConsolePageHeader } from "@/components/console/page-header";
 import { OPERATOR_META, type OperatorCode } from "@/lib/operators";
+import { CONSOLE_ROLES } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
+import { requireConsoleScope } from "@/lib/session";
 import { activeClosureFilter, getClosedRouteIds } from "@/lib/transit";
 
 export const dynamic = "force-dynamic";
 
 export default async function ConsoleOverviewPage() {
+  const t = await getTranslations("console");
+  // The layout already gates access; this page needs the scope, and the
+  // lookup is memoized per render pass so it costs nothing extra.
+  const { routeWhere, operatorCode } =
+    await requireConsoleScope(CONSOLE_ROLES);
   const now = new Date();
   const [operators, routeCount, stopCount, tripCount, closedIds, closures] =
     await Promise.all([
       prisma.operator.findMany({
+        ...(operatorCode ? { where: { code: operatorCode } } : {}),
         include: {
           assignments: {
             select: {
@@ -30,7 +39,7 @@ export default async function ConsoleOverviewPage() {
           },
         },
       }),
-      prisma.route.count(),
+      prisma.route.count({ where: routeWhere }),
       prisma.stop.count(),
       prisma.trip.count(),
       getClosedRouteIds(now),
@@ -107,8 +116,8 @@ export default async function ConsoleOverviewPage() {
   return (
     <>
       <ConsolePageHeader
-        title="Agency Overview"
-        subtitle="Service providers across the hybrid network — bus, light rail, and paratransit"
+        title={t("overview.title")}
+        subtitle={t("overview.subtitle")}
       />
 
       <div className="mb-5 grid grid-cols-3 gap-4 max-lg:grid-cols-1">

@@ -2,8 +2,18 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Avatar } from "@/components/base/avatar/avatar";
+import { setMemberRole } from "@/actions/members";
 import { authClient } from "@/lib/auth-client";
-import { ASSIGNABLE_ROLES, type AppRole } from "@/lib/permissions";
+import {
+  OPERATOR_CODES,
+  OPERATOR_META,
+  type OperatorCode,
+} from "@/lib/operators";
+import {
+  ASSIGNABLE_ROLES,
+  OPERATOR_SCOPED_ROLES,
+  type AppRole,
+} from "@/lib/permissions";
 import { cx } from "@/utils/cx";
 
 interface MemberRow {
@@ -12,8 +22,41 @@ interface MemberRow {
   email: string;
   image?: string | null;
   role?: string | null;
+  operatorCode?: OperatorCode | null;
   banned?: boolean | null;
   createdAt: Date | string;
+}
+
+/**
+ * Role and operator are one choice in one control. A scoped role expands into
+ * one option per operator, so it is impossible to pick "route-operator" and
+ * leave the operator unanswered — which is exactly the state that would grant
+ * network-wide edit rights.
+ */
+function encodeRole(role: string, operatorCode?: OperatorCode | null) {
+  return operatorCode ? `${role}:${operatorCode}` : role;
+}
+
+function decodeRole(value: string): {
+  role: AppRole;
+  operatorCode: OperatorCode | null;
+} {
+  const [role, operatorCode] = value.split(":");
+  return {
+    role: role as AppRole,
+    operatorCode: (operatorCode as OperatorCode | undefined) ?? null,
+  };
+}
+
+function roleOptions(assignable: AppRole[]) {
+  return assignable.flatMap((r) =>
+    OPERATOR_SCOPED_ROLES.includes(r)
+      ? OPERATOR_CODES.map((code) => ({
+          value: encodeRole(r, code),
+          label: `${r} · ${OPERATOR_META[code].name}`,
+        }))
+      : [{ value: r, label: r }],
+  );
 }
 
 const ROLE_BADGES: Record<string, string> = {
@@ -81,14 +124,16 @@ export function MembersTable({
     return !["admin", "super-admin"].includes(memberRole);
   };
 
-  const setRole = async (member: MemberRow, role: string) => {
+  const setRole = async (member: MemberRow, encoded: string) => {
     setBusyId(member.id);
     setError(null);
-    const { error } = await authClient.admin.setRole({
+    const { role, operatorCode } = decodeRole(encoded);
+    const result = await setMemberRole({
       userId: member.id,
-      role: role as AppRole,
+      role,
+      operatorCode,
     });
-    if (error) setError(error.message ?? "Failed to set role");
+    if (!result.ok) setError(result.error);
     await load();
     setBusyId(null);
   };
@@ -171,24 +216,26 @@ export function MembersTable({
                   ROLE_BADGES[role] ?? ROLE_BADGES.user,
                 )}
               >
-                {role}
+                {member.operatorCode
+                  ? `${role} · ${OPERATOR_META[member.operatorCode].name}`
+                  : role}
               </span>
 
               {manageable && assignable.length > 0 ? (
                 <select
-                  value={role}
+                  value={encodeRole(role, member.operatorCode)}
                   onChange={(e) => setRole(member, e.target.value)}
                   disabled={busyId === member.id}
                   className="cursor-pointer rounded-lg border border-[#D6DCD0] bg-white px-2 py-1.5 text-[12.5px] text-[#1C2321] disabled:opacity-50"
                 >
                   {!assignable.includes(role as AppRole) && (
-                    <option value={role} disabled>
+                    <option value={encodeRole(role, member.operatorCode)} disabled>
                       {role}
                     </option>
                   )}
-                  {assignable.map((r) => (
-                    <option key={r} value={r}>
-                      {r}
+                  {roleOptions(assignable).map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
                     </option>
                   ))}
                 </select>

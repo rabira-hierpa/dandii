@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
+import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import {
   DndContext,
@@ -22,9 +23,11 @@ import {
   deleteStop,
   renameStop,
   reorderRouteStops,
+  setStopNameAm,
 } from "@/actions/stop-edit";
 import { SortableStopRow } from "@/components/console/sortable-stop-row";
 import { useRouteEditorStore } from "@/stores/route-editor-store";
+import { useStopPlacementStore } from "@/stores/stop-placement-store";
 import type { RouteEditorDetail, RouteStopRow } from "@/types/console";
 import { cx } from "@/utils/cx";
 
@@ -37,6 +40,7 @@ const inputClass =
   "rounded-lg border border-[#D6DCD0] bg-white px-2.5 py-2 text-[13px] font-normal text-[#1C2321] placeholder:text-[#9AA69C]";
 
 export function RouteStopsTab({ detail, onChanged }: RouteStopsTabProps) {
+  const t = useTranslations("console.stops");
   const router = useRouter();
   const directionId = useRouteEditorStore((s) => s.directionId);
   const setDirectionId = useRouteEditorStore((s) => s.setDirectionId);
@@ -46,10 +50,30 @@ export function RouteStopsTab({ detail, onChanged }: RouteStopsTabProps) {
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftName, setDraftName] = useState("");
+  const [draftNameAm, setDraftNameAm] = useState("");
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
-  const [newLat, setNewLat] = useState("");
-  const [newLon, setNewLon] = useState("");
+  const placing = useStopPlacementStore((st) => st.placing);
+  const picked = useStopPlacementStore((st) => st.picked);
+  const outOfBounds = useStopPlacementStore((st) => st.outOfBounds);
+  const startPlacing = useStopPlacementStore((st) => st.startPlacing);
+  const cancelPlacing = useStopPlacementStore((st) => st.cancelPlacing);
+  const resetPlacement = useStopPlacementStore((st) => st.reset);
+  const newLat = useStopPlacementStore((st) => st.latText);
+  const newLon = useStopPlacementStore((st) => st.lonText);
+  const setNewLat = useStopPlacementStore((st) => st.setLatText);
+  const setNewLon = useStopPlacementStore((st) => st.setLonText);
+
+  // Escape is the expected way out of a map mode, and without it the only exit
+  // is a button the map may be covering on a narrow screen.
+  useEffect(() => {
+    if (!placing) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") cancelPlacing();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [placing, cancelPlacing]);
 
   const direction = detail.directions.find(
     (d) => d.directionId === directionId,
@@ -114,20 +138,36 @@ export function RouteStopsTab({ detail, onChanged }: RouteStopsTabProps) {
 
   const submitRename = (stop: RouteStopRow) => {
     const name = draftName.trim();
-    if (name === "" || name === stop.name) {
+    const nameAm = draftNameAm.trim();
+    const nameChanged = name !== "" && name !== stop.name;
+    const nameAmChanged = nameAm !== (stop.nameAm ?? "");
+    if (!nameChanged && !nameAmChanged) {
       setEditingId(null);
       return;
     }
     setFeedback(null);
     startTransition(async () => {
-      const result = await renameStop({ stopId: stop.id, name });
-      if (result.ok) {
-        setFeedback({ kind: "ok", message: `Renamed to “${name}”` });
-        setEditingId(null);
-        refresh();
-      } else {
-        setFeedback({ kind: "error", message: result.error });
+      const [nameResult, nameAmResult] = await Promise.all([
+        nameChanged ? renameStop({ stopId: stop.id, name }) : null,
+        nameAmChanged
+          ? setStopNameAm({ stopId: stop.id, nameAm: nameAm === "" ? null : nameAm })
+          : null,
+      ]);
+      const error = nameResult?.ok === false
+        ? nameResult.error
+        : nameAmResult?.ok === false
+          ? nameAmResult.error
+          : null;
+      if (error) {
+        setFeedback({ kind: "error", message: error });
+        return;
       }
+      setFeedback({
+        kind: "ok",
+        message: nameChanged ? `Renamed to “${name}”` : "Amharic name saved",
+      });
+      setEditingId(null);
+      refresh();
     });
   };
 
@@ -169,9 +209,8 @@ export function RouteStopsTab({ detail, onChanged }: RouteStopsTabProps) {
             : `${newName.trim()} created, but this direction has no trips to add it to`,
         });
         setCreating(false);
+        resetPlacement();
         setNewName("");
-        setNewLat("");
-        setNewLon("");
         refresh();
       } else {
         setFeedback({ kind: "error", message: result.error });
@@ -204,21 +243,46 @@ export function RouteStopsTab({ detail, onChanged }: RouteStopsTabProps) {
           <input
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
-            placeholder="Stop name"
+            placeholder={t("stopName")}
             className={inputClass}
           />
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={placing ? cancelPlacing : startPlacing}
+              aria-pressed={placing}
+              className={cx(
+                "cursor-pointer rounded-lg border px-2.5 py-1.5 text-[12px] font-semibold",
+                placing
+                  ? "border-[#D97706] bg-[#FFFBEB] text-[#B45309]"
+                  : "border-[#D6DCD0] bg-white text-[#3D4A3F] hover:bg-[#F4F6F2]",
+              )}
+            >
+              {placing ? t("pickingHint") : t("pickOnMap")}
+            </button>
+            {picked && !placing && (
+              <span className="text-[11px] text-[#15803D]">
+                {t("positionSet")}
+              </span>
+            )}
+          </div>
+          {outOfBounds && (
+            <p className="text-[11px] text-[#B45309]">
+              {t("outsideAddis")}
+            </p>
+          )}
           <div className="grid grid-cols-2 gap-2">
             <input
               value={newLat}
               onChange={(e) => setNewLat(e.target.value)}
-              placeholder="Latitude, e.g. 9.0104"
+              placeholder={t("latitude")}
               inputMode="decimal"
               className={inputClass}
             />
             <input
               value={newLon}
               onChange={(e) => setNewLon(e.target.value)}
-              placeholder="Longitude, e.g. 38.7612"
+              placeholder={t("longitude")}
               inputMode="decimal"
               className={inputClass}
             />
@@ -234,14 +298,17 @@ export function RouteStopsTab({ detail, onChanged }: RouteStopsTabProps) {
               disabled={isPending || newName.trim() === ""}
               className="cursor-pointer rounded-lg bg-[#1C2321] px-3 py-1.5 text-[12.5px] font-semibold text-white hover:bg-[#2C3531] disabled:opacity-50"
             >
-              {isPending ? "Creating…" : "Create stop"}
+              {isPending ? t("creating") : t("create")}
             </button>
             <button
               type="button"
-              onClick={() => setCreating(false)}
+              onClick={() => {
+                setCreating(false);
+                resetPlacement();
+              }}
               className="cursor-pointer text-[12.5px] font-medium text-[#5C6B5E] hover:underline"
             >
-              Cancel
+              {t("cancel")}
             </button>
           </div>
         </div>
@@ -251,7 +318,7 @@ export function RouteStopsTab({ detail, onChanged }: RouteStopsTabProps) {
           onClick={() => setCreating(true)}
           className="cursor-pointer rounded-lg border border-dashed border-[#C3CBBD] bg-white px-3 py-2 text-[12.5px] font-semibold text-[#3D4A3F] hover:bg-[#F8FAF6]"
         >
-          + Create new stop
+          {t("createStop")}
         </button>
       )}
 
@@ -281,11 +348,14 @@ export function RouteStopsTab({ detail, onChanged }: RouteStopsTabProps) {
                 position={i + 1}
                 editing={editingId === stop.id}
                 draftName={draftName}
+                draftNameAm={draftNameAm}
                 disabled={isPending}
                 onDraftChange={setDraftName}
+                onDraftAmChange={setDraftNameAm}
                 onStartEdit={() => {
                   setEditingId(stop.id);
                   setDraftName(stop.name);
+                  setDraftNameAm(stop.nameAm ?? "");
                 }}
                 onCommitEdit={() => submitRename(stop)}
                 onCancelEdit={() => setEditingId(null)}

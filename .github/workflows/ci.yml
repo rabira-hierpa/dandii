@@ -72,6 +72,14 @@ jobs:
         run: printf 'DATABASE_URL=%s\nBETTER_AUTH_SECRET=%s\n' "$DATABASE_URL" "$BETTER_AUTH_SECRET" > .env
       - name: Seed the database
         run: npm run db:seed
+      # Smoke check only: CI seeds a fresh database, so there are never legacy
+      # route-operator rows here and this always passes on data grounds. It
+      # earns its place by breaking on schema drift — the query names
+      # User.role and User.operatorCode, so renaming either fails the build.
+      # The REAL gate is running this against production before the read-side
+      # deploy; see docs/designs/operator-scoping-console.md.
+      - name: Operator-scope backfill gate (schema smoke)
+        run: npx tsx scripts/backfill-operator-codes.ts
       # Runs the CRITICAL preserve-fares regression (RUN_DB_TESTS=1) plus units.
       - name: DB integration tests
         run: npm test
@@ -99,3 +107,68 @@ jobs:
       # Gate: the overlay must not introduce errors the base feed did not have.
       - name: GTFS validator gate
         run: node scripts/validate-feed-diff.mjs "$GITHUB_WORKSPACE/base-out/report.json" "$GITHUB_WORKSPACE/overlay-out/report.json"
+
+  # ── Deploy ────────────────────────────────────────────────────────────
+  # Both deploys hang off `needs:`, so they cannot start unless typecheck,
+  # lint, unit tests and the GTFS validator all passed on this exact commit.
+  # That is the whole point of routing deploys through CI rather than letting
+  # Coolify watch the branch: Coolify would deploy a red build just as happily.
+
+  deploy-dev:
+    name: Deploy → dev.dandii.app
+    needs: [check, feed-validator]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-latest
+    environment:
+      name: development
+      url: https://dev.dandii.app
+    steps:
+      - name: Trigger Coolify deployment
+        env:
+          COOLIFY_URL: ${{ secrets.COOLIFY_URL }}
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+          RESOURCE_UUID: ${{ secrets.COOLIFY_DEV_UUID }}
+        run: |
+          # Skip cleanly rather than fail red when the secrets are not set
+          # yet. Merging this workflow before configuring Coolify is a
+          # sequencing choice, not a broken build.
+          if [ -z "$COOLIFY_URL" ] || [ -z "$RESOURCE_UUID" ]; then
+            echo "::notice::Coolify secrets not configured — skipping deploy."
+            echo "Add COOLIFY_URL, COOLIFY_TOKEN and COOLIFY_DEV_UUID."
+            echo "See docs/deployment.md."
+            exit 0
+          fi
+          curl --fail --silent --show-error \
+            -X GET "$COOLIFY_URL/api/v1/deploy?uuid=$RESOURCE_UUID&force=false" \
+            -H "Authorization: Bearer $COOLIFY_TOKEN"
+
+  deploy-production:
+    name: Deploy → addis.dandii.app
+    needs: [check, feed-validator]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    # Add a required reviewer to this environment in GitHub settings to turn
+    # production into a one-click approval instead of a straight-through
+    # deploy. Nothing here changes if you do — the job simply waits.
+    environment:
+      name: production
+      url: https://addis.dandii.app
+    steps:
+      - name: Trigger Coolify deployment
+        env:
+          COOLIFY_URL: ${{ secrets.COOLIFY_URL }}
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+          RESOURCE_UUID: ${{ secrets.COOLIFY_PROD_UUID }}
+        run: |
+          # Skip cleanly rather than fail red when the secrets are not set
+          # yet. Merging this workflow before configuring Coolify is a
+          # sequencing choice, not a broken build.
+          if [ -z "$COOLIFY_URL" ] || [ -z "$RESOURCE_UUID" ]; then
+            echo "::notice::Coolify secrets not configured — skipping deploy."
+            echo "Add COOLIFY_URL, COOLIFY_TOKEN and COOLIFY_PROD_UUID."
+            echo "See docs/deployment.md."
+            exit 0
+          fi
+          curl --fail --silent --show-error \
+            -X GET "$COOLIFY_URL/api/v1/deploy?uuid=$RESOURCE_UUID&force=false" \
+            -H "Authorization: Bearer $COOLIFY_TOKEN"

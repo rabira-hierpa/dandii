@@ -28,6 +28,8 @@ interface ConsoleMobileNavProps {
   user: { name: string; email: string; role: string };
   canManageSettings: boolean;
   pendingProposals: number;
+  /** True when the viewer is limited to one operator. */
+  scoped: boolean;
 }
 
 /**
@@ -39,6 +41,7 @@ export function ConsoleMobileNav({
   user,
   canManageSettings,
   pendingProposals,
+  scoped,
 }: ConsoleMobileNavProps) {
   const pathname = usePathname();
   const router = useRouter();
@@ -90,13 +93,17 @@ export function ConsoleMobileNav({
                   {user.email}
                 </div>
               </div>
-              <Link
-                href="/console/feeds"
-                className="px-3.5 py-2.5 text-[13px] font-medium hover:bg-[#F4F5F2]"
-                onClick={() => setMenuOpen(false)}
-              >
-                Feed Versions
-              </Link>
+              {/* Network-wide, so absent for a scoped operator — the route
+                  refuses directly as well. */}
+              {!scoped && (
+                <Link
+                  href="/console/feeds"
+                  className="px-3.5 py-2.5 text-[13px] font-medium hover:bg-[#F4F5F2]"
+                  onClick={() => setMenuOpen(false)}
+                >
+                  Feed Versions
+                </Link>
+              )}
               <Link
                 href="/"
                 className="px-3.5 py-2.5 text-[13px] font-medium hover:bg-[#F4F5F2]"

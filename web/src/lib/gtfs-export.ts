@@ -13,7 +13,10 @@ import {
 import {
   applyRouteOverridesToCsv,
   applyStopOverridesToCsv,
+  applyShapeOverridesToCsv,
   applyStopTimeOrderToCsv,
+  translationsCsv,
+  type StopTranslation,
   applyTripOverridesToCsv,
 } from "@/lib/gtfs-overrides";
 import { hasNoOverrides, type FeedOverrides } from "@/types/gtfs";
@@ -66,6 +69,9 @@ const REPLACED = new Set([
   "feed_info.txt",
   "fare_attributes.txt",
   "fare_rules.txt",
+  // Regenerated from the console's Amharic names rather than copied: the
+  // vendored DT4A feed ships no translations at all.
+  "translations.txt",
 ]);
 
 /**
@@ -74,8 +80,15 @@ const REPLACED = new Set([
  * ids. All empty in the common case, and then the tables copy verbatim.
  */
 async function loadFeedOverrides(): Promise<FeedOverrides> {
-  const [stopRows, routeRows, createdStops, createdRoutes, tripRows, orderRows] =
-    await Promise.all([
+  const [
+    stopRows,
+    routeRows,
+    createdStops,
+    createdRoutes,
+    tripRows,
+    orderRows,
+    shapeRows,
+  ] = await Promise.all([
     prisma.stopOverride.findMany({
       select: { stopId: true, name: true, deletedAt: true },
     }),
@@ -116,7 +129,39 @@ async function loadFeedOverrides(): Promise<FeedOverrides> {
     prisma.routeStopOrderOverride.findMany({
       select: { routeId: true, directionId: true, stopIds: true },
     }),
+    prisma.shapeOverride.findMany({
+      select: { routeId: true, directionId: true, geojson: true },
+    }),
   ]);
+
+  // Drawn geometry is keyed by (route, direction) but shapes.txt is keyed by
+  // shape_id, so fan it out across the shapes those trips point at.
+  const drawnShapes = new Map<string, [number, number][]>();
+  if (shapeRows.length > 0) {
+    const drawnTrips = await prisma.trip.findMany({
+      where: {
+        OR: shapeRows.map((s) => ({
+          routeId: s.routeId,
+          directionId: s.directionId,
+        })),
+        shapeId: { not: null },
+      },
+      select: { shapeId: true, routeId: true, directionId: true },
+    });
+    const byKey = new Map(
+      shapeRows.map((s) => [
+        `${s.routeId}:${s.directionId}`,
+        ((s.geojson as { coordinates?: number[][] } | null)?.coordinates ??
+          []) as [number, number][],
+      ]),
+    );
+    for (const trip of drawnTrips) {
+      const coords = byKey.get(`${trip.routeId}:${trip.directionId}`);
+      if (coords && coords.length >= 2) {
+        drawnShapes.set(trip.shapeId as string, coords);
+      }
+    }
+  }
 
   // The override is keyed by (route, direction) but stop_times.txt is keyed by
   // trip, so fan it out across the trips that direction actually runs.
@@ -144,6 +189,7 @@ async function loadFeedOverrides(): Promise<FeedOverrides> {
     createdStops,
     tripFields: tripRows,
     stopTimeOrders,
+    drawnShapes,
     // A created route can also carry an override row (renamed after creation),
     // so desc/url come from there when present.
     createdRoutes: createdRoutes.map((r) => ({
@@ -161,6 +207,40 @@ async function loadFeedOverrides(): Promise<FeedOverrides> {
 }
 
 /** Copy the base feed + overlay the three generated files into `filePath`. */
+/**
+ * Effective Amharic names: the console's correction where one exists,
+ * otherwise whatever the seed loaded. Tombstoned stops are left out — they
+ * are not in the exported `stops.txt`, and a translation naming a stop the
+ * feed lacks is a foreign-key violation.
+ */
+async function loadStopTranslations(): Promise<StopTranslation[]> {
+  const [stops, overrides] = await Promise.all([
+    prisma.stop.findMany({
+      where: { nameAm: { not: null } },
+      select: { id: true, nameAm: true },
+    }),
+    prisma.stopOverride.findMany({
+      where: { nameAm: { not: null } },
+      select: { stopId: true, nameAm: true, deletedAt: true },
+    }),
+  ]);
+
+  const byStop = new Map<string, string>();
+  for (const stop of stops) byStop.set(stop.id, stop.nameAm!);
+  for (const override of overrides) {
+    if (override.deletedAt) byStop.delete(override.stopId);
+    else byStop.set(override.stopId, override.nameAm!);
+  }
+
+  const tombstoned = new Set(
+    overrides.filter((o) => o.deletedAt).map((o) => o.stopId),
+  );
+  return [...byStop]
+    .filter(([stopId]) => !tombstoned.has(stopId))
+    .map(([stopId, nameAm]) => ({ stopId, nameAm }))
+    .sort((a, b) => a.stopId.localeCompare(b.stopId));
+}
+
 async function buildZip(
   filePath: string,
   baseDir: string,
@@ -205,6 +285,9 @@ async function buildZip(
     edited.set("stop_times.txt", (base) =>
       applyStopTimeOrderToCsv(base, overrides.stopTimeOrders),
     );
+    edited.set("shapes.txt", (base) =>
+      applyShapeOverridesToCsv(base, overrides.drawnShapes),
+    );
   }
 
   const entries = await readdir(baseDir);
@@ -217,6 +300,14 @@ async function buildZip(
       continue;
     }
     archive.file(path.join(baseDir, name), { name });
+  }
+
+  // Amharic names reach riders only through this file — a name typed in the
+  // console and left out of the export would show on our map and nowhere
+  // else, which is the same trap console-created routes fell into.
+  const translations = translationsCsv(await loadStopTranslations());
+  if (translations !== "") {
+    archive.append(translations, { name: "translations.txt" });
   }
 
   archive.append(feedInfoCsv(version), { name: "feed_info.txt" });

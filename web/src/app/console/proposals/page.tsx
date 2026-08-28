@@ -1,8 +1,9 @@
+import { getTranslations } from "next-intl/server";
 import { ConsolePageHeader } from "@/components/console/page-header";
 import type { OperatorCode } from "@/lib/operators";
 import { CONSOLE_ROLES } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
-import { requireRole } from "@/lib/session";
+import { requireConsoleScope } from "@/lib/session";
 import { ReviewQueue, type RouteGroup } from "./review-queue";
 
 export const dynamic = "force-dynamic";
@@ -33,10 +34,13 @@ function fareKey(fare: FareShape): string {
 }
 
 export default async function ProposalsReviewPage() {
-  await requireRole(CONSOLE_ROLES);
+  const t = await getTranslations("console");
+  const { routeWhere, scoped } = await requireConsoleScope(CONSOLE_ROLES);
 
   const proposals = await prisma.fareProposal.findMany({
-    where: { status: "PENDING" },
+    // A scoped reviewer sees only proposals on routes they operate, which
+    // also makes the queue their actual workload rather than the network's.
+    where: { status: "PENDING", ...(scoped ? { route: routeWhere } : {}) },
     orderBy: { createdAt: "asc" },
     select: {
       id: true,
@@ -173,8 +177,8 @@ export default async function ProposalsReviewPage() {
   return (
     <>
       <ConsolePageHeader
-        title="Fare Review"
-        subtitle="Rider-submitted fare corrections awaiting approval"
+        title={t("proposals.title")}
+        subtitle={t("proposals.subtitle")}
         action={
           totalPending > 0 ? (
             <span className="shrink-0 rounded-full bg-[#FEF3C7] px-3 py-1 text-[12.5px] font-semibold text-[#92400E]">

@@ -46,6 +46,94 @@ export function closedWindow(
   return { start: Math.min(a, b), end: Math.max(a, b) };
 }
 
+/** One call on a trip, with the geometry needed to resolve a closure onto it. */
+export interface TripStop {
+  id: string;
+  sequence: number;
+  lat: number;
+  lon: number;
+}
+
+/**
+ * How far a closure boundary may be snapped onto a stop the trip actually
+ * serves.
+ *
+ * The two directions of a road are separate stops a carriageway apart, usually
+ * 10-40 m, occasionally more at a wide interchange. 150 m covers that without
+ * reaching the next stop along, which in Addis is rarely closer than 300 m.
+ *
+ * The two ways to be wrong are not equal. Too small and a closed road plans as
+ * open, which is what this constant exists to stop. Too large and a usable
+ * route is withheld — annoying, but it does not send anyone down a blocked
+ * street.
+ */
+export const CLOSURE_SNAP_TOLERANCE_M = 150;
+
+/**
+ * The closed window on ONE trip, resolving across directions.
+ *
+ * A closure stores two stop ids, and the obvious reading is that they resolve
+ * on any trip serving the route. They do not: 406 of the 444 two-direction
+ * routes in the feed share no stop ids at all between their directions, because
+ * each side of the road is its own stop with its own id. Matching by id alone
+ * therefore resolves on the direction the operator happened to click and
+ * silently returns "not closed" for the other one — so a road closed for a
+ * political event stayed open in the return journey plan.
+ *
+ * Exact ids win when the trip serves them. Otherwise each boundary is snapped
+ * to the nearest stop the trip does serve, which is the same treatment the map
+ * got: a closure is a place on the ground, not a pair of database rows.
+ */
+export function resolveClosedWindow(
+  closure: ClosureRange,
+  stops: TripStop[],
+  toleranceM: number = CLOSURE_SNAP_TOLERANCE_M,
+  /**
+   * Coordinates for boundary stops this trip does not serve. Passed in rather
+   * than held at module scope: the server handles concurrent journey requests,
+   * and shared mutable state would let one rider's closure resolve against
+   * another's anchors.
+   */
+  anchors?: ReadonlyMap<string, { lat: number; lon: number }>,
+): ClosedWindow | null {
+  if (closure.kind === "WHOLE_ROUTE") return null;
+  if (!closure.fromStopId || !closure.toStopId) return null;
+  if (stops.length === 0) return null;
+
+  const a = resolveBoundary(closure.fromStopId, stops, toleranceM, anchors);
+  const b = resolveBoundary(closure.toStopId, stops, toleranceM, anchors);
+  if (a === null || b === null) return null;
+
+  // The return direction runs the stops the other way, so from/to arrive
+  // reversed. Order them or every seq comparison downstream inverts.
+  return { start: Math.min(a, b), end: Math.max(a, b) };
+}
+
+/** Sequence of `stopId` on this trip — by id, else by nearest position. */
+function resolveBoundary(
+  stopId: string,
+  stops: TripStop[],
+  toleranceM: number,
+  anchors?: ReadonlyMap<string, { lat: number; lon: number }>,
+): number | null {
+  const exact = stops.find((s) => s.id === stopId);
+  if (exact) return exact.sequence;
+
+  const anchor = anchors?.get(stopId);
+  if (!anchor) return null;
+
+  let best: TripStop | null = null;
+  let bestM = Infinity;
+  for (const s of stops) {
+    const d = haversineMeters(anchor.lat, anchor.lon, s.lat, s.lon);
+    if (d < bestM) {
+      bestM = d;
+      best = s;
+    }
+  }
+  return best && bestM <= toleranceM ? best.sequence : null;
+}
+
 /**
  * Whether a rider could still board at `boardSeq` and alight at `alightSeq`
  * given one closure. `window` comes from closedWindow() for the same trip.

@@ -6,6 +6,7 @@ export async function GET() {
     {
       id: string;
       name: string;
+      nameAm: string | null;
       lat: number;
       lon: number;
       route_count: number;
@@ -14,13 +15,14 @@ export async function GET() {
     SELECT
       s.id,
       s.name,
+      s."nameAm" AS "nameAm",
       s.lat,
       s.lon,
       COUNT(DISTINCT t."routeId")::int AS route_count
     FROM stop_time st
     INNER JOIN trip t ON t.id = st."tripId"
     INNER JOIN stop s ON s.id = st."stopId"
-    GROUP BY s.id, s.name, s.lat, s.lon
+    GROUP BY s.id, s.name, s."nameAm", s.lat, s.lon
     ORDER BY route_count DESC
     LIMIT 40
   `;
@@ -40,6 +42,7 @@ export async function GET() {
     properties: {
       stopId: s.id,
       name: s.name,
+      nameAm: s.nameAm,
       routeCount: s.route_count,
     },
   }));

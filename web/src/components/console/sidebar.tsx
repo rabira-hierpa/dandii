@@ -1,31 +1,53 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { LocaleToggle } from "@/components/foundations/locale-toggle";
 import { authClient } from "@/lib/auth-client";
 import { cx } from "@/utils/cx";
 
+/**
+ * Nav stays a module constant — it is route configuration, not copy. Only the
+ * label is deferred, as a message key resolved at render, so the sidebar
+ * follows the locale without rebuilding this list per language.
+ */
 const NAV_ITEMS = [
-  { href: "/console", label: "Agency Overview", dot: "#D97706" },
-  { href: "/console/routes", label: "Route Assignment", dot: "#15803D" },
-  { href: "/console/network", label: "Network Map", dot: "#0F766E" },
-  { href: "/console/fares", label: "Fare Management", dot: "#1D4ED8" },
-  { href: "/console/proposals", label: "Fare Review", dot: "#DC2626" },
-  { href: "/console/feeds", label: "Feed Versions", dot: "#0891B2" },
-  { href: "/console/analytics", label: "Analytics", dot: "#9333EA" },
-];
+  { href: "/console", key: "overview", dot: "#D97706" },
+  { href: "/console/routes", key: "routes", dot: "#15803D" },
+  { href: "/console/network", key: "network", dot: "#0F766E" },
+  { href: "/console/fares", key: "fares", dot: "#1D4ED8" },
+  { href: "/console/proposals", key: "proposals", dot: "#DC2626" },
+  { href: "/console/feeds", key: "feeds", dot: "#0891B2" },
+  { href: "/console/analytics", key: "analytics", dot: "#9333EA" },
+] as const;
+
+/**
+ * Pages that answer a question about the whole network. A single-operator
+ * version of "average fare by operator" is a different page, not a narrower
+ * one, so a scoped role does not get them. The routes refuse directly too —
+ * hiding a nav item is presentation, not authorization.
+ */
+const NETWORK_WIDE_KEYS: readonly string[] = ["analytics", "feeds"];
 
 interface ConsoleSidebarProps {
   user: { name: string; email: string; role: string };
   canManageSettings: boolean;
   pendingProposals: number;
+  /** True when the viewer is limited to one operator. */
+  scoped: boolean;
 }
 
 export function ConsoleSidebar({
   user,
   canManageSettings,
   pendingProposals,
+  scoped,
 }: ConsoleSidebarProps) {
+  const t = useTranslations("console");
+  const items = scoped
+    ? NAV_ITEMS.filter((item) => !NETWORK_WIDE_KEYS.includes(item.key))
+    : NAV_ITEMS;
   const pathname = usePathname();
   const router = useRouter();
 
@@ -40,16 +62,14 @@ export function ConsoleSidebar({
       <div className="border-b border-[#2A3A2E] px-2 pb-6">
         <Link href="/" className="block">
           <div className="text-[15px] font-bold tracking-wide">
-            Addis Ababa Transit
+            {t("brand")}
           </div>
-          <div className="mt-0.5 text-xs text-[#93A695]">
-            Network Operations Console
-          </div>
+          <div className="mt-0.5 text-xs text-[#93A695]">{t("tagline")}</div>
         </Link>
       </div>
 
       <nav className="mt-5 flex flex-col gap-1.5">
-        {NAV_ITEMS.map((item) => {
+        {items.map((item) => {
           const active =
             item.href === "/console"
               ? pathname === "/console"
@@ -69,7 +89,7 @@ export function ConsoleSidebar({
                 className="size-[9px] shrink-0 rounded-[3px]"
                 style={{ background: item.dot }}
               />
-              {item.label}
+              {t(`nav.${item.key}`)}
               {item.href === "/console/proposals" && pendingProposals > 0 && (
                 <span className="ml-auto flex min-w-5 items-center justify-center rounded-full bg-[#DC2626] px-1.5 py-0.5 text-[10.5px] font-bold text-white">
                   {pendingProposals}
@@ -92,20 +112,23 @@ export function ConsoleSidebar({
             {user.role}
           </div>
         </div>
+        {/* Same dandii_locale cookie the rider app writes, so an operator who
+            set Amharic on the public map finds the console in Amharic too. */}
+        <LocaleToggle className="mb-1.5" />
         <div className="flex flex-col gap-0.5">
           {canManageSettings && (
             <Link
               href="/settings"
               className="rounded-lg px-2 py-1.5 text-[12.5px] font-medium text-[#B8C4B8] hover:bg-[#24352A]"
             >
-              Settings
+              {t("settings")}
             </Link>
           )}
           <button
             onClick={signOut}
             className="cursor-pointer rounded-lg px-2 py-1.5 text-left text-[12.5px] font-medium text-[#B8C4B8] hover:bg-[#24352A]"
           >
-            Sign out
+            {t("signOut")}
           </button>
         </div>
         <div className="px-2 text-[11px] leading-relaxed text-[#7E9182]">

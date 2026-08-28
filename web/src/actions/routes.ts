@@ -1,9 +1,10 @@
 "use server";
 
-import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { createRouteRow } from "@/lib/route-create";
+import { denyOutOfScope, getUserOperatorCode } from "@/lib/operator-scope";
 import { requirePermission } from "@/lib/session";
 
 const routeFieldsSchema = z.object({
@@ -39,37 +40,47 @@ export async function createRoute(input: z.infer<typeof routeFieldsSchema>) {
   const session = await requirePermission({ route: ["create"] });
   const data = routeFieldsSchema.parse(input);
 
-  const agency = await prisma.agency.findFirst({ select: { id: true } });
-  if (!agency) return { ok: false as const, error: "No agency configured" };
-
-  const route = await prisma.route.create({
-    data: {
-      id: `manual-${randomUUID()}`,
-      shortName: data.shortName,
-      longName: data.longName,
-      type: data.type,
-      lengthMeters: data.lengthKm != null ? data.lengthKm * 1000 : null,
-      agencyId: agency.id,
-      ...(data.operatorId
-        ? {
-            assignment: {
-              create: {
-                operatorId: data.operatorId,
-                assignedById: session.user.id,
-              },
-            },
-          }
-        : {}),
-    },
+  // Shared with the network-map editor's createRoute. The permissions differ by
+  // design; the row invariants must not (see lib/route-create.ts).
+  const created = await createRouteRow({
+    shortName: data.shortName,
+    longName: data.longName,
+    type: data.type,
+    lengthMeters: data.lengthKm != null ? data.lengthKm * 1000 : null,
+    operatorId: data.operatorId,
+    assignedById: session.user.id,
   });
+  if (!created.ok) return { ok: false as const, error: created.error };
 
   revalidateConsole();
-  return { ok: true as const, routeId: route.id };
+  return { ok: true as const, routeId: created.routeId };
 }
 
 export async function updateRoute(input: z.infer<typeof updateRouteSchema>) {
   const session = await requirePermission({ route: ["update"] });
   const data = updateRouteSchema.parse(input);
+
+  const denied = await denyOutOfScope(session.user.id, {
+    routeId: data.routeId,
+  });
+  if (denied) return denied;
+
+  // Handing a route to a different operator is an admin act. A scoped user
+  // may edit their own routes freely, but moving one across the boundary —
+  // in either direction — is the boundary itself, so it isn't theirs to move.
+  const scope = await getUserOperatorCode(session.user.id);
+  if (scope !== null) {
+    const current = await prisma.routeAssignment.findUnique({
+      where: { routeId: data.routeId },
+      select: { operatorId: true },
+    });
+    if ((data.operatorId ?? null) !== (current?.operatorId ?? null)) {
+      return {
+        ok: false as const,
+        error: "Only an admin can reassign a route to another operator",
+      };
+    }
+  }
 
   await prisma.$transaction(async (tx) => {
     await tx.route.update({
@@ -107,6 +118,15 @@ export async function updateRoute(input: z.infer<typeof updateRouteSchema>) {
 export async function bulkAssignRoutes(input: z.infer<typeof bulkAssignSchema>) {
   const session = await requirePermission({ route: ["assign"] });
   const { routeIds, operatorId } = bulkAssignSchema.parse(input);
+
+  // Bulk assignment is how routes change hands, so it stays with the roles
+  // that have no operator of their own to favour.
+  if ((await getUserOperatorCode(session.user.id)) !== null) {
+    return {
+      ok: false as const,
+      error: "Only an admin can reassign routes between operators",
+    };
+  }
 
   const operator = await prisma.operator.findUnique({
     where: { id: operatorId },

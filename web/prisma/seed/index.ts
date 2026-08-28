@@ -17,6 +17,7 @@ import {
   type RouteGeometry,
 } from "./build-geojson";
 import {
+  loadStopNameTranslations,
   readGtfsFile,
   type GtfsAgency,
   type GtfsCalendar,
@@ -232,11 +233,17 @@ async function main() {
   );
 
   console.log("Importing stops…");
+  // Amharic names from the feed's own translations.txt, if it ships one —
+  // see docs on loadStopNameTranslations. Empty today; the console editor and
+  // the curated hub-name seed (scripts/seed-amharic-stop-names.ts) are what
+  // fill nameAm until the feed carries real translations.
+  const stopNameAm = loadStopNameTranslations("am");
   await batchedCreate(stops, (chunk) =>
     prisma.stop.createMany({
       data: chunk.map((s) => ({
         id: s.stop_id,
         name: s.stop_name,
+        nameAm: stopNameAm.get(s.stop_id) ?? stopNameAm.get(s.stop_name) ?? null,
         lat: Number(s.stop_lat),
         lon: Number(s.stop_lon),
       })),

@@ -22,6 +22,7 @@ import {
   type OperatorCode,
 } from "@/lib/operators";
 import { recordSearch, useRecentSearches } from "@/lib/recent-searches";
+import { localizedStopName } from "@/lib/stop-i18n";
 import { useMapStore } from "@/stores/map-store";
 import { cx } from "@/utils/cx";
 import { AccountMenu } from "./account-menu";
@@ -37,7 +38,7 @@ import {
 } from "./library-rail";
 import { BlueDotMarker } from "./markers";
 import { DandiiLogo } from "@/components/foundations/logo/dandii-logo";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { LocaleToggle } from "@/components/foundations/locale-toggle";
 import {
   closedStopIds,
@@ -120,12 +121,13 @@ function StopCard({
   onDirections: (stop: StopSearchResult) => void;
 }) {
   const t = useTranslations("map");
+  const locale = useLocale();
   return (
     <div className="rounded-2xl bg-[#F8F9FA] p-3.5">
       <div className="flex items-center gap-2.5">
         <span className="size-3 shrink-0 rounded-full border-[3px] border-[#1A73E8] bg-white" />
         <div className="min-w-0 flex-1 text-[14px] font-semibold text-[#202124]">
-          {stop.name}
+          {localizedStopName(stop, locale)}
         </div>
       </div>
       <div className="mt-1 pl-5.5 text-[11.5px] text-[#5F6368]">
@@ -152,6 +154,7 @@ export function PublicMap({ user, account }: Readonly<PublicMapProps>) {
   const mapRef = useRef<MapRef>(null);
   const tMap = useTranslations("map");
   const tc = useTranslations("common");
+  const locale = useLocale();
   const { selectedRouteId, setSelectedRouteId, hiddenOperators, setSheetSnap } =
     useMapStore();
 
@@ -342,6 +345,7 @@ export function PublicMap({ user, account }: Readonly<PublicMapProps>) {
           data.features.map((feature) => ({
             id: feature.properties?.stopId as string,
             name: feature.properties?.name as string,
+            nameAm: (feature.properties?.nameAm as string | null) ?? null,
             lat: (feature.geometry as GeoJSON.Point).coordinates[1],
             lon: (feature.geometry as GeoJSON.Point).coordinates[0],
           })),
@@ -415,8 +419,8 @@ export function PublicMap({ user, account }: Readonly<PublicMapProps>) {
         setRouteDetail({ routeId: selectedRouteId, detail: data });
         // State C: label the search box with the origin stop (Maps POI pattern).
         if (detailSourceRef.current === "direct") {
-          const origin = data.stops[0]?.name;
-          if (origin) setQuery(origin);
+          const origin = data.stops[0];
+          if (origin) setQuery(localizedStopName(origin, locale));
         }
         if (data.geojson?.coordinates?.length) {
           mapRef.current?.fitBounds(
@@ -952,7 +956,7 @@ export function PublicMap({ user, account }: Readonly<PublicMapProps>) {
                   >
                     <span className="size-2.5 shrink-0 rounded-full border-[3px] border-[#1A73E8] bg-white" />
                     <span className="min-w-0 flex-1 truncate text-[13px] text-[#202124]">
-                      {stop.name}
+                      {localizedStopName(stop, locale)}
                     </span>
                     {stop.count && stop.count > 1 && (
                       <span className="shrink-0 rounded-full bg-[#F1F3F4] px-1.5 py-0.5 text-[10.5px] font-medium text-[#5F6368]">
@@ -1228,7 +1232,7 @@ export function PublicMap({ user, account }: Readonly<PublicMapProps>) {
             <BlueDotMarker
               longitude={endpoints.from.lon}
               latitude={endpoints.from.lat}
-              label={endpoints.from.name}
+              label={localizedStopName(endpoints.from, locale)}
               pulse
               onClick={() =>
                 mapRef.current?.flyTo({
@@ -1241,7 +1245,7 @@ export function PublicMap({ user, account }: Readonly<PublicMapProps>) {
             <BlueDotMarker
               longitude={endpoints.to.lon}
               latitude={endpoints.to.lat}
-              label={endpoints.to.name}
+              label={localizedStopName(endpoints.to, locale)}
               color="#D93025"
               onClick={() =>
                 mapRef.current?.flyTo({
@@ -1259,7 +1263,7 @@ export function PublicMap({ user, account }: Readonly<PublicMapProps>) {
             key={stopBounceKey}
             longitude={selectedStop.lon}
             latitude={selectedStop.lat}
-            label={selectedStop.name}
+            label={localizedStopName(selectedStop, locale)}
             bounce
             onClick={() => selectStop(selectedStop)}
           />

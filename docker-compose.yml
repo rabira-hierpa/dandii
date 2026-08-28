@@ -26,35 +26,6 @@ services:
       timeout: 5s
       retries: 10
 
-  otp:
-    # PINNED by digest, not `:latest`. `:latest` tracks a rolling dev-2.x
-    # snapshot; when prod pulled a newer snapshot than the one that built the
-    # graph, every /plan request crashed with "Index N out of bounds for
-    # length 0" (empty internal collections) while local kept working on the
-    # older image. This digest is the known-good build. To upgrade: pull a new
-    # digest deliberately AND wipe the graph.obj volume so it rebuilds clean.
-    image: opentripplanner/opentripplanner@sha256:130408b5deb35a375173b404ba3c2a489f85105ba221093fe211266825ae9167
-    container_name: otp-routing
-    restart: unless-stopped
-    ports:
-      # Host port 8081 (not 8080) — avoids clashing with another app already
-      # using 8080 on the VPS. Internal container port stays 8080; `web`
-      # talks to it over the Docker network via OTP_URL=http://otp:8080.
-      - "${OTP_BIND:-127.0.0.1:8081}:8080"
-    volumes:
-      # Contains et-addisababa-gtfs-2026.zip (per-operator agencies) AND
-      # addis.osm.pbf (Addis street network, clipped from the Geofabrik
-      # Ethiopia extract to the transit bbox). The OSM layer gives OTP a real
-      # walk network: coordinate-based planning works, walk legs get street
-      # geometry (no more broken lines), and stop-to-stop transfers route over
-      # streets — required by the /api/directions OTP transfer fallback.
-      - ./otp-data:/var/opentripplanner
-    # Rebuild the graph from the GTFS zip on boot rather than loading a
-    # graph.obj that may have been produced by a different image. With the
-    # image now pinned, you can switch to "--load --serve" for fast restarts
-    # once a graph.obj built by THIS digest exists on the volume.
-    command: "--build --save --serve"
-
   web:
     build: ./web
     container_name: dandii-web
@@ -62,8 +33,6 @@ services:
     depends_on:
       postgis:
         condition: service_healthy
-      otp:
-        condition: service_started
     ports:
       - "${WEB_BIND:-3000}:3000"
     volumes:
@@ -78,9 +47,18 @@ services:
       # and the files must outlive a redeploy — without one, every published
       # feed version is lost on the next deploy.
       - gtfs_exports:/app/.gtfs-exports
+    networks:
+      # Project-default network for postgis, plus the shared one that carries
+      # OTP. Naming `default` explicitly is required: declaring any network on
+      # a service replaces the implicit default rather than adding to it, and
+      # dropping it would cut web off from postgis.
+      - default
+      - dandii-shared
     environment:
       DATABASE_URL: postgresql://admin:adminpassword@postgis:5432/gtfs_dev_db
-      OTP_URL: http://otp:8080
+      # Resolves through the `otp` alias on dandii-shared. Override only if
+      # OTP lives somewhere this network cannot reach.
+      OTP_URL: ${OTP_URL:-http://otp:8080}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
@@ -101,3 +79,10 @@ services:
 volumes:
   gtfs_exports:
   postgis_data:
+
+networks:
+  # Created once per host: `docker network create dandii-shared`. External so
+  # that neither stack owns it — dev and production both attach, and tearing
+  # one down leaves the other's OTP link intact.
+  dandii-shared:
+    external: true

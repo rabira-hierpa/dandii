@@ -52,7 +52,8 @@ dandii/
 │       ├── components/    # ui (Untitled UI), console, map
 │       ├── lib/           # auth, permissions, prisma, transit helpers
 │       └── stores/        # zustand client stores
-└── docker-compose.yml     # postgis + otp + web
+├── docker-compose.yml     # postgis + web (per environment)
+└── docker-compose.otp.yml # shared OpenTripPlanner (one per host)
 ```
 
 ## Getting started (local dev)
@@ -60,12 +61,17 @@ dandii/
 1. Start PostGIS and OTP:
 
    ```bash
-   docker compose up -d postgis otp
+   docker network create dandii-shared   # once per machine
+   docker compose -f docker-compose.otp.yml up -d
+   docker compose up -d postgis
    ```
 
    OTP rebuilds its graph from `otp-data/` on first start (~2 min).
-   Use the `latest` OTP image (see `docker-compose.yml`) — older 2.6/2.7
-   builds crash on frequency-based GTFS feeds when planning trips.
+   The image is **pinned by digest** in `docker-compose.otp.yml`. Do not
+   switch it to `latest`: that tag tracks a rolling dev-2.x snapshot, and a
+   newer snapshot than the one that built the graph made every `/plan`
+   request crash with "Index N out of bounds for length 0". To upgrade, pick
+   a new digest deliberately and wipe the graph so it rebuilds clean.
 
 2. Configure the app:
 
@@ -100,6 +106,8 @@ dandii/
 ## Production (Docker / Coolify)
 
 ```bash
+docker network create dandii-shared   # once per host
+docker compose -f docker-compose.otp.yml up -d
 BETTER_AUTH_SECRET=… GOOGLE_CLIENT_ID=… GOOGLE_CLIENT_SECRET=… \
 SUPER_ADMIN_EMAIL=… docker compose up --build -d
 ```
@@ -113,6 +121,11 @@ cd web && DATABASE_URL=postgresql://… npx tsx prisma/seed/index.ts
 
 On Coolify, expose only the `web` service (Traefik handles the domain and
 TLS); `postgis` and `otp` stay internal.
+
+OTP is **one shared instance per host**, deployed from
+`docker-compose.otp.yml` as its own resource. Each environment keeps its own
+`postgis` and `web`. One graph means one feed for every environment — see
+[docs/deployment.md](docs/deployment.md).
 
 **Deploys are automatic.** A push to `dev` deploys dev.dandii.app and a push
 to `main` deploys addis.dandii.app, both only after CI passes on that commit.

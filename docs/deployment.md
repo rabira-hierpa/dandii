@@ -244,11 +244,42 @@ result in the deploy log. It warns and starts anyway: an unscoped dispatcher
 is a problem for one person, a container that refuses to boot is a problem for
 every rider.
 
-## Note on the OTP graph
+## OpenTripPlanner is shared
 
-Production needs its own `otp-data/` volume with the GTFS zip, same as dev.
-OpenTripPlanner rebuilds its graph on restart when the file changes. Journey
-planning returns nothing until that graph exists.
+One OTP per host, not one per environment. It is deployed from
+`docker-compose.otp.yml` as its own Coolify resource; `dev` and `production`
+each keep their own `postgis` and `web` and reach OTP over a shared Docker
+network.
+
+OTP holds the entire street and transit graph in memory, so a second copy
+doubles the heaviest service on the box for no benefit while both environments
+serve the same feed.
+
+**Set it up once per host:**
+
+```bash
+docker network create dandii-shared
+```
+
+Then deploy `docker-compose.otp.yml` as a resource and attach both application
+resources to `dandii-shared`. The OTP container carries the network alias
+`otp`, so `OTP_URL=http://otp:8080` resolves identically from either stack and
+needs no per-environment value.
+
+### What sharing costs
+
+- **One graph means one feed.** Updating `otp-data/` changes journey planning
+  for dev and production at the same instant. A feed change cannot be tried on
+  dev first. If you ever need that, run a second OTP resource with its own
+  `otp-data/` and point dev's `OTP_URL` at it.
+- **A restart takes both sites' journey planning down** while the graph
+  rebuilds, because the command is `--build --save --serve`. Restart OTP
+  deliberately, not as a reflex.
+- Shape snapping is unaffected. That is CAR mode over the OSM layer and never
+  touches GTFS.
+
+Journey planning returns nothing until the graph finishes building (~2 min
+from cold).
 
 ## First production deploy
 

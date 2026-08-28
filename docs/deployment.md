@@ -51,6 +51,45 @@ what your instance shows, swap the `curl` for that URL.
 to that environment in GitHub settings and pushes to `main` will wait for your
 approval instead of going straight out. Nothing in the workflow changes.
 
+## DNS and domains
+
+DNS lives at Hostinger; the app runs on the VPS behind Coolify's Traefik.
+Only an A record is needed:
+
+| Host | Type | Value |
+|---|---|---|
+| `dev` | A | the VPS IP |
+| `addis` | A | the same VPS IP |
+
+**Ignore Hostinger's "Subdomains" tab.** It manages sites hosted on Hostinger's
+own shared hosting and will stay empty forever for a VPS-hosted app. An A
+record in "DNS records" is the whole job.
+
+The apex `dandii.app` still points at Hostinger, which is fine — the bare
+domain does not serve the app.
+
+### Telling Coolify about the domain
+
+DNS resolving is not enough. Traefik routes by hostname, so until the domain is
+set on the Coolify resource you get a 404 over HTTP and `TRAEFIK DEFAULT CERT`
+over HTTPS, from a server that is otherwise healthy.
+
+On the resource → Configuration → Domains, set `https://addis.dandii.app`
+**including the scheme** (Coolify reads it to decide whether to request a
+certificate), then **redeploy** — Traefik labels are rewritten on deploy, not
+on save. Let's Encrypt issues shortly after.
+
+Verify:
+
+```bash
+echo | openssl s_client -connect addis.dandii.app:443 -servername addis.dandii.app 2>/dev/null \
+  | openssl x509 -noout -subject -issuer
+```
+
+A real issuer means it worked; `TRAEFIK DEFAULT CERT` means Traefik still has
+no route for that hostname. Note that the 404 looks identical whether the
+resource exists without a domain or does not exist yet.
+
 ## Production environment variables
 
 Set these on the Coolify production resource. Everything except

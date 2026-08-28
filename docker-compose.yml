@@ -13,7 +13,11 @@ services:
       # Bound to localhost only — reachable from the host machine (e.g. for
       # `prisma studio` or an SSH tunnel) but never from the public internet.
       # 5433 avoids clashing with a locally installed Postgres.
-      - "127.0.0.1:5433:5432"
+      # Host bindings are parameterized because one VPS runs more than one
+      # stack (dev and production side by side) and a fixed host port means
+      # the second stack cannot start: "port is already allocated". Defaults
+      # are the local-dev values, so nothing changes on a developer machine.
+      - "${POSTGIS_BIND:-127.0.0.1:5433}:5432"
     volumes:
       - postgis_data:/var/lib/postgresql/data
     healthcheck:
@@ -36,7 +40,7 @@ services:
       # Host port 8081 (not 8080) — avoids clashing with another app already
       # using 8080 on the VPS. Internal container port stays 8080; `web`
       # talks to it over the Docker network via OTP_URL=http://otp:8080.
-      - "127.0.0.1:8081:8080"
+      - "${OTP_BIND:-127.0.0.1:8081}:8080"
     volumes:
       # Contains et-addisababa-gtfs-2026.zip (per-operator agencies) AND
       # addis.osm.pbf (Addis street network, clipped from the Geofabrik
@@ -61,7 +65,7 @@ services:
       otp:
         condition: service_started
     ports:
-      - "3000:3000"
+      - "${WEB_BIND:-3000}:3000"
     volumes:
       # The base GTFS feed the exporter rewrites. Bind-mounted rather than
       # baked in: the build context is ./web, so data/ is not in the image at

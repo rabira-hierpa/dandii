@@ -19,9 +19,26 @@
  * wrong one grants access to the wrong agency's data, which is worse than the
  * lockout it would be papering over.
  */
+import { PrismaPg } from "@prisma/adapter-pg";
 import { config } from "dotenv";
+import { PrismaClient } from "../src/generated/prisma/client";
 
+// Loaded, not required: in the production image DATABASE_URL comes from the
+// container environment and there is no .env. dotenv leaves an existing
+// process.env value alone, so an inline DATABASE_URL always wins.
 config({ path: ".env" });
+
+/**
+ * Constructed here rather than imported from `@/lib/prisma`.
+ *
+ * That module resolves through the `@/` path alias and pulls in the app's
+ * singleton, neither of which exists in the runner image — only `scripts/`
+ * and the generated client are copied in. A direct client keeps this script
+ * runnable in production, which is the one place it actually matters.
+ */
+const prisma = new PrismaClient({
+  adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
+});
 
 const OPERATOR_CODES = ["ANBESSA", "SHEGER", "ALLIANCE", "MINIBUS", "LRT"];
 /** Roles that must carry an operator. Mirrors OPERATOR_SCOPED_ROLES. */
@@ -71,8 +88,6 @@ async function main() {
     for (const e of errors) console.error(`error: ${e}`);
     process.exit(2);
   }
-
-  const { prisma } = await import("../src/lib/prisma");
 
   for (const { email, code } of assignments) {
     const updated = await prisma.user.updateMany({

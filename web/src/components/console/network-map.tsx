@@ -10,6 +10,7 @@ import MapGl, {
 import "maplibre-gl/dist/maplibre-gl.css";
 import { RouteTabBody } from "@/components/console/route-tab-body";
 import { PickedStopLayer } from "@/components/console/picked-stop-layer";
+import { MapEmptyNotice } from "@/components/console/map-empty-notice";
 import { RouteTabs } from "@/components/console/route-tabs";
 import { ShapeContextMenu } from "@/components/console/shape-context-menu";
 import {
@@ -600,6 +601,13 @@ export function NetworkMap({ routes, isMaintainer }: NetworkMapProps) {
               Loading routes…
             </div>
           )}
+          {/* Loading is covered above; this is the other half — loaded, and
+              still nothing to draw. Without it the operator cannot tell a
+              permissions problem from a data one. */}
+          <MapEmptyNotice
+            routeCount={routes.length}
+            featureCount={geojson?.features.length ?? null}
+          />
           {hover.route && (
             <div className="pointer-events-none absolute top-2.5 left-2.5 z-10 flex max-w-[80%] items-center gap-2 rounded-lg border border-[#E2E6DE] bg-white/95 px-2.5 py-1.5 shadow-sm backdrop-blur">
               <RouteChip

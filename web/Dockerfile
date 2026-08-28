@@ -45,6 +45,12 @@ COPY --from=build /app/prisma.config.ts ./prisma.config.ts
 COPY --from=build /app/scripts ./scripts
 COPY --from=build /app/src/generated ./src/generated
 
+# Seed the export directory before USER nextjs. Docker initializes an empty
+# named volume from the image path it mounts over, ownership included; without
+# this the volume arrives root-owned and the first feed generation fails with
+# EACCES as uid 1001.
+RUN mkdir -p /app/.gtfs-exports && chown nextjs:nodejs /app/.gtfs-exports
+
 COPY --chown=nextjs:nodejs docker-entrypoint.sh ./docker-entrypoint.sh
 RUN sed -i 's/\r$//' docker-entrypoint.sh && chmod +x docker-entrypoint.sh
 

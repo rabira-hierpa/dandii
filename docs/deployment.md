@@ -105,6 +105,33 @@ Set these on the Coolify production resource. Everything except
 | `GOOGLE_CLIENT_SECRET` | Same client as dev |
 | `SUPER_ADMIN_EMAIL` | Your address. Grants super-admin on first sign-in. |
 | `G4A_TAG` | Production analytics tag, or leave unset |
+| `RESEND_API_KEY` | Optional. Without it console invitations do not email — the UI falls back to "share this link directly", so every operator invite is hand-delivered. |
+| `EMAIL_FROM` | Only if `RESEND_API_KEY` is set. Defaults to `Dandii <no-reply@dandii.et>`; use a domain you control or Resend rejects the send. |
+
+Do **not** set `NEXT_PUBLIC_SITE_URL`. It falls back to `BETTER_AUTH_URL`, every
+caller is server-side, and because `NEXT_PUBLIC_` is inlined at build time a
+runtime value in Coolify would silently do nothing.
+
+`GTFS_BASE_DIR` and `GTFS_EXPORT_DIR` are handled by the compose file — see
+below. `GTFS_DIR`, `PROMO_BASE_URL` and `RUN_DB_TESTS` are seed/script/CI only.
+
+### Feed storage
+
+Two volumes on the `web` service, both required for feed generation to work:
+
+- `./data:/app/data:ro` — the base GTFS feed the exporter rewrites. The build
+  context is `./web`, so `data/` is not in the image; without this mount
+  "Generate feed" fails with `Base GTFS feed not found`. The path lands on
+  `BASE_DIR_CANDIDATES[1]`, so `GTFS_BASE_DIR` needs no value.
+- `gtfs_exports:/app/.gtfs-exports` — generated zips, with
+  `GTFS_EXPORT_DIR` pointed at it. The default resolves to `/.gtfs-exports`,
+  outside `/app` and outside any volume, so every published version would be
+  lost on the next deploy.
+
+The image seeds `/app/.gtfs-exports` owned by `nextjs` before dropping
+privileges: Docker initializes an empty named volume from the image path it
+mounts over, ownership included, and a root-owned volume fails the first write
+as uid 1001.
 
 ### Google sign-in: reuse the same OAuth client
 

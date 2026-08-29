@@ -12,8 +12,8 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "db:migrate": "prisma migrate dev",
-    "db:seed": "tsx --env-file=.env prisma/seed/index.ts",
-    "db:seed-amharic-stops": "tsx --env-file=.env scripts/seed-amharic-stop-names.ts",
+    "db:seed": "tsx --env-file-if-exists=.env prisma/seed/index.ts",
+    "db:seed-amharic-stops": "tsx --env-file-if-exists=.env scripts/seed-amharic-stop-names.ts",
     "promo": "tsx scripts/promo/record.mts",
     "promo:cut": "tsx scripts/promo/assemble.mts"
   },

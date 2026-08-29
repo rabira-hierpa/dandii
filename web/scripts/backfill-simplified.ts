@@ -22,7 +22,7 @@
  *
  * Idempotent: re-running writes the same values.
  *
- * Usage:  npx tsx --env-file=.env scripts/backfill-simplified.ts [--dry-run]
+ * Usage:  npx tsx --env-file-if-exists=.env scripts/backfill-simplified.ts [--dry-run]
  */
 import { buildRouteGeometry } from "@/../prisma/seed/build-geojson";
 import { prisma } from "@/lib/prisma";

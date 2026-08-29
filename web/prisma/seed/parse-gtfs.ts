@@ -2,9 +2,35 @@ import fs from "node:fs";
 import path from "node:path";
 import Papa from "papaparse";
 
-/** Repo-root GTFS directory; override with GTFS_DIR for other layouts. */
-export const GTFS_DIR =
-  process.env.GTFS_DIR ?? path.resolve(process.cwd(), "../data/gtfs-2026");
+/**
+ * Candidate locations for `data/gtfs-2026` (the directory containing
+ * `combined/`). GTFS_DIR always wins when set; otherwise probe both cwd
+ * layouts the seed actually runs under, the same way lib/gtfs-export.ts's
+ * BASE_DIR_CANDIDATES does — the dev server's cwd is the repo root
+ * (`data/gtfs-2026` is a child), but a Docker `exec` into the standalone
+ * image has cwd `/app` with the feed bind-mounted at `/app/data` (still a
+ * child, not `../data` as web/-relative local runs would resolve). Trying
+ * both, in order, means one seed script works in every layout instead of
+ * requiring GTFS_DIR to be set by hand for Docker.
+ */
+function resolveGtfsDir(): string {
+  const candidates = [
+    process.env.GTFS_DIR,
+    path.resolve(process.cwd(), "data", "gtfs-2026"),
+    path.resolve(process.cwd(), "..", "data", "gtfs-2026"),
+  ].filter((p): p is string => Boolean(p));
+
+  for (const dir of candidates) {
+    if (fs.existsSync(path.join(dir, "combined", "stops.txt"))) return dir;
+  }
+  // Fall back to the first candidate (old default behaviour) so the error
+  // message below — not a silent path a caller has to trace back — is what
+  // readGtfsFile's ENOENT actually points at.
+  return candidates[0] ?? path.resolve(process.cwd(), "../data/gtfs-2026");
+}
+
+/** Directory containing `combined/`; override with GTFS_DIR for other layouts. */
+export const GTFS_DIR = resolveGtfsDir();
 
 /**
  * Header-based CSV parse — column order differs between the combined feed

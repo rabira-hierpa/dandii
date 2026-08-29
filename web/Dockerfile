@@ -29,8 +29,21 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # @prisma/client is explicit rather than inherited from the standalone
 # bundle: the generated client requires @prisma/client/runtime, and relying on
 # whatever Next's tracing happened to bundle would break silently on upgrade.
+#
+# papaparse + @turf/* are the same story, for prisma/seed/*.ts specifically:
+# Next's file trace only keeps a package if it survives in the WEBPACK SERVER
+# BUNDLE, and small pure-JS libs like these get inlined into that bundle
+# rather than left as a standalone node_modules/ entry — so `directions.ts`
+# importing @turf/helpers works fine in-process (webpack already resolved it)
+# while `tsx prisma/seed/build-geojson.ts`, which does real Node module
+# resolution against disk, gets MODULE_NOT_FOUND for the exact same package.
+# Any script under prisma/seed/ or scripts/ that needs a package NOT reached
+# by an app route (check with `grep -rl <pkg> src/`) has to be added here —
+# the standalone build gives no signal that it's missing until you try to run
+# the script in the container.
 RUN npm install --no-save --no-package-lock \
-    prisma@7.8.0 @prisma/client@7.8.0 dotenv@17 tsx@4 @prisma/adapter-pg@7.8.0
+    prisma@7.8.0 @prisma/client@7.8.0 dotenv@17 tsx@4 @prisma/adapter-pg@7.8.0 \
+    papaparse@5.5.4 @turf/helpers@7.3.5 @turf/length@7.3.5 @turf/simplify@7.3.5
 
 RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
 

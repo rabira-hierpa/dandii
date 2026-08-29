@@ -2,18 +2,40 @@
 
 All notable changes to Dandii are documented in this file.
 
-## [1.4.0] - 2026-08-19
+## [2.0.0] - 2026-08-29
+
+Console invitations and per-operator authorization change who can do what
+across the whole app — every operator-scoped role, every feed-edit mutation,
+and the console's own read surfaces are gated on it now. That's the major
+bump: an admin's and a route-operator's console are no longer the same shape.
 
 ### Added
-- Console invitations are scoped to an operator. Inviting someone to run
+- **Console invitations**, self-service by design. A super-admin or admin
+  invites someone by email with a role (and, for `route-operator`, the
+  operator they run); the invitee accepts by signing in with Google using
+  that exact address — no separate password flow. Settings → Invitations
+  lists pending/accepted/revoked/expired invites and lets you revoke one
+  before it's used. Falls back to a copyable link when no email provider
+  (`RESEND_API_KEY`) is configured.
+- **Console invitations are scoped to an operator.** Inviting someone to run
   Anbessa's routes now grants exactly that: `lib/operator-scope.ts` checks
   every feed-edit mutation against the invitee's operator, refuses routes
   assigned elsewhere or to nobody, and keeps shared interchanges — a stop
   more than one operator calls at — with the admins.
-- Amharic stop names are published. The exported feed carries a GTFS
-  `translations.txt` built from the names operators enter in the console,
-  keyed by `record_id` so two stops sharing a name stay distinct.
-- Fare history in the console: who changed a route's fare, from what to
+- **Every console read surface scoped to the viewer's operator** — fares,
+  closures, and proposal review now show a route-operator only what they run,
+  not the whole network.
+- **Amharic stop names**, end to end. `Stop.nameAm` / `StopOverride.nameAm`
+  fields, a console editor field beside the existing rename, and the public
+  map (search, stop markers, route sheet, directions) showing the Amharic
+  name whenever the reader's locale is `am`, with an English fallback where
+  nobody's translated a stop yet. Amharic for the console shell, nav, and
+  page headers too. The exported feed carries a GTFS `translations.txt` built
+  from the same names, keyed by `record_id` so two stops sharing a name stay
+  distinct.
+- **Click the console map to position a new stop** instead of typing
+  coordinates by hand.
+- **Fare history in the console:** who changed a route's fare, from what to
   what, and whether it came from a rider proposal or a console edit.
 
 ### Fixed
@@ -21,6 +43,22 @@ All notable changes to Dandii are documented in this file.
   which knew nothing about the operator column — demoting an admin to
   route-operator through it produced a route-operator with no operator,
   which is to say one with the run of the whole network.
+- **The console Network Map explains an empty basemap instead of just
+  showing one.** A database seeded before per-direction shapes existed drew
+  nothing and gave no reason why, for every role including super-admin — an
+  operator had no way to tell "you lack access" from "the feed has no
+  geometry" apart.
+- **`db:seed` actually runs inside the deployed Docker container.** Three
+  separate bugs, each hiding the next: `tsx --env-file=.env` hard-crashed
+  because the container has no `.env` file (env vars come from
+  `docker-compose`, not a file); `GTFS_DIR`'s default assumed the local-dev
+  cwd layout and resolved outside the container's bind-mounted `data/`
+  entirely; and `prisma/seed/build-geojson.ts`'s `@turf/*` + `papaparse`
+  imports were never traced into the standalone build (small pure-JS
+  packages get inlined into the webpack server bundle rather than left as a
+  `node_modules` entry, so the app itself worked while `tsx`'s real Node
+  module resolution failed). Fixed all three; the reseed a database missing
+  shapes needs is now just `docker exec <web> npm run db:seed`.
 
 ## [1.3.0] — 2026-08-17
 

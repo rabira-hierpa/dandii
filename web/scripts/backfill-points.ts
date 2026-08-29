@@ -12,7 +12,7 @@
  *
  * Badges are derived afterwards from approved counts.
  *
- * Usage:  npx tsx --env-file=.env scripts/backfill-points.ts [--dry-run]
+ * Usage:  npx tsx --env-file-if-exists=.env scripts/backfill-points.ts [--dry-run]
  */
 import { prisma } from "@/lib/prisma";
 import { deriveBadges, POINTS } from "@/lib/points";

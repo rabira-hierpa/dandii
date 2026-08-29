@@ -22,7 +22,7 @@
  * stop id) — it will not clobber a name a console editor already corrected,
  * because it only fills stops whose `nameAm` is still null.
  *
- * Usage: npx tsx --env-file=.env scripts/seed-amharic-stop-names.ts [--dry-run]
+ * Usage: npx tsx --env-file-if-exists=.env scripts/seed-amharic-stop-names.ts [--dry-run]
  */
 import { prisma } from "@/lib/prisma";
 

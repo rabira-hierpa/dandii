@@ -11,7 +11,7 @@ Dandii is built on the official Addis Ababa **GTFS 2026** feed published under D
 - `et-addisababa-minibus_2026.zip` — the minibus sub-feed (251 routes).
 - `combined/` — the extracted combined feed the seed reads (`routes.txt`, `stops.txt`, `trips.txt`, `stop_times.txt`, `frequencies.txt`, `shapes.txt`, `calendar.txt`, `agency.txt`, `feed_info.txt`).
 
-The seed's feed directory is resolved from `GTFS_DIR` (defaults to the repo-root `data/gtfs-2026`).
+The seed's feed directory is resolved from `GTFS_DIR` when set; otherwise it probes both cwd layouts the seed runs under (dev server cwd = repo root, `data/gtfs-2026` a child; standalone Docker cwd = `/app`, feed bind-mounted at `/app/data`) — same idea as `GTFS_BASE_DIR` in [GTFS Export and Feed Versions](GTFS-Export-and-Feed-Versions). No manual override needed in the standard compose topology.
 
 ## Deriving operators
 
@@ -58,7 +58,7 @@ The seed is **idempotent** and **fare-preserving by default**. This is the T0 sa
 
 ```bash
 npm run db:seed                 # preserve (safe default)
-npx tsx --env-file=.env prisma/seed/index.ts --destructive   # full wipe + reseed
+npx tsx --env-file-if-exists=.env prisma/seed/index.ts --destructive   # full wipe + reseed
 ```
 
 A reseed records one summary `FareChangeLog` row with `source = RESEED`.

@@ -1,0 +1,58 @@
+name: dandii-otp
+
+# Shared OpenTripPlanner, deployed once per VPS and used by every Dandii stack
+# (dev and production) over the `dandii-shared` network.
+#
+# Split out of the main compose file because OTP is the expensive service: it
+# holds the whole street + transit graph in memory, and running one per
+# environment doubles that for no benefit while both environments serve the
+# same feed.
+#
+# The tradeoff this accepts: one graph means one feed. Updating otp-data/
+# changes journey planning for dev and production at the same instant, so a
+# feed change cannot be staged on dev first. Shape snapping is unaffected —
+# that is CAR mode over the OSM layer and never touches GTFS.
+#
+# Deploy as its own Coolify resource, and create the network once on the host:
+#   docker network create dandii-shared
+
+services:
+  otp:
+    # PINNED by digest, not `:latest`. `:latest` tracks a rolling dev-2.x
+    # snapshot; when prod pulled a newer snapshot than the one that built the
+    # graph, every /plan request crashed with "Index N out of bounds for
+    # length 0" (empty internal collections) while local kept working on the
+    # older image. This digest is the known-good build. To upgrade: pull a new
+    # digest deliberately AND wipe the graph.obj volume so it rebuilds clean.
+    image: opentripplanner/opentripplanner@sha256:130408b5deb35a375173b404ba3c2a489f85105ba221093fe211266825ae9167
+    restart: unless-stopped
+    ports:
+      # Published for debugging only; `web` reaches OTP over dandii-shared by
+      # name, not through the host. Loopback-bound so it is not exposed.
+      - "${OTP_BIND:-127.0.0.1:8081}:8080"
+    volumes:
+      # Contains et-addisababa-gtfs-2026.zip (per-operator agencies) AND
+      # addis.osm.pbf (Addis street network, clipped from the Geofabrik
+      # Ethiopia extract to the transit bbox). The OSM layer gives OTP a real
+      # walk network: coordinate-based planning works, walk legs get street
+      # geometry (no more broken lines), and stop-to-stop transfers route over
+      # streets — required by the /api/directions OTP transfer fallback.
+      - ./otp-data:/var/opentripplanner
+    networks:
+      dandii-shared:
+        # Every web container resolves OTP_URL=http://otp:8080 through this
+        # alias, so the hostname is identical whether OTP is shared or, as in
+        # local development, running inside the same project.
+        aliases: [otp]
+    # Rebuild the graph from the GTFS zip on boot rather than loading a
+    # graph.obj that may have been produced by a different image. With the
+    # image now pinned, you can switch to "--load --serve" for fast restarts
+    # once a graph.obj built by THIS digest exists on the volume.
+    #
+    # Note for the shared setup: this rebuild takes journey planning down for
+    # BOTH environments while it runs. Restart deliberately.
+    command: "--build --save --serve"
+
+networks:
+  dandii-shared:
+    external: true

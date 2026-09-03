@@ -115,6 +115,37 @@ runtime value in Coolify would silently do nothing.
 `GTFS_BASE_DIR` and `GTFS_EXPORT_DIR` are handled by the compose file — see
 below. `GTFS_DIR`, `PROMO_BASE_URL` and `RUN_DB_TESTS` are seed/script/CI only.
 
+### Host ports — required when two stacks share a VPS
+
+dev and production are separate stacks on the same machine, each running its
+own `postgis`, `otp` and `web`. Host port bindings are therefore parameterized;
+leaving them at the defaults makes the second stack fail to start with:
+
+```
+Bind for 127.0.0.1:8081 failed: port is already allocated
+```
+
+Set these on the **production** resource so it does not collide with dev:
+
+| Variable | Dev (default) | Production |
+|---|---|---|
+| `POSTGIS_BIND` | `127.0.0.1:5433` | `127.0.0.1:5434` |
+| `OTP_BIND` | `127.0.0.1:8081` | `127.0.0.1:8082` |
+| `WEB_BIND` | `3000` | `127.0.0.1:3001` |
+
+Any free port works; only distinctness matters.
+
+`WEB_BIND` defaults to `3000` with no interface prefix, so the app is reachable
+at `VPS_IP:3000` directly, bypassing Traefik and its TLS. Binding production to
+`127.0.0.1:3001` closes that — Traefik reaches the container over the Docker
+network and never uses the host port. Worth doing on dev too.
+
+Longer term the cleanest answer is to publish no host ports at all and let
+Traefik route entirely over the Docker network, keeping the published ports in
+a `docker-compose.override.yml` that only local development loads. Coolify
+passes `-f docker-compose.yml` explicitly, so it would ignore such an override.
+That is a bigger change than unblocking a deploy, so it is not done here.
+
 ### Feed storage
 
 Two volumes on the `web` service, both required for feed generation to work:
